@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <meta name="color-scheme" content="dark">
+    <title>Enter Salesforce ID</title>
+    <link rel="stylesheet" href="../styles/dark-input.css">
+</head>
+<body class="modal-window">
+    <div class="input-container">
+        <input type="text" 
+               id="id-input"
+               class="dark-input"
+               placeholder="Enter Salesforce ID" 
+               spellcheck="false"
+               autocomplete="off"
+               autofocus>
+        <div class="hint">
+            Press <span class="key">↵</span> to open or <span class="key">Esc</span> to cancel
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const input = document.getElementById('id-input');
+
+            document.addEventListener('DOMContentLoaded', () => {
+                input.focus();
+                input.select();
+            });
+            
+            input.addEventListener('keyup', (event) => {
+                const value = input.value.trim();
+                
+                if (event.key === 'Enter' && value) {
+                    window.electronAPI.openSalesforceId(value);
+                } else if (event.key === 'Escape') {
+                    window.electronAPI.closeIdInput();
+                }
+            });
+
+            input.focus();
+        });
+    </script>
+</body>
+</html>

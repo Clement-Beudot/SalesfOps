@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <meta name="color-scheme" content="dark">
+    <title>Extract Values</title>
+    <link rel="stylesheet" href="../styles/dark-input.css">
+</head>
+<body class="modal-window">
+    <div class="textarea-container">
+        <textarea 
+            id="json-input"
+            class="dark-textarea"
+            placeholder="Paste your JSON or CSV data here (Cmd/Ctrl + V)" 
+            spellcheck="false"
+            autofocus
+        ></textarea>
+
+        <div class="select-container" id="select-container" style="display: none;">
+            <select id="path-select">
+                <option value="">Select a field to extract...</option>
+            </select>
+        </div>
+
+        <div id="error-message" class="error-message"></div>
+        <div id="success-message" class="success-message"></div>
+        <div id="result" class="result"></div>
+
+        <div class="hint">
+            Press <span class="key">Esc</span> to cancel
+        </div>
+    </div>
+
+    <script>
+        const textarea = document.getElementById('json-input');
+        const selectContainer = document.getElementById('select-container');
+        const pathSelect = document.getElementById('path-select');
+        const errorMessage = document.getElementById('error-message');
+        const successMessage = document.getElementById('success-message');
+        const resultDiv = document.getElementById('result');
+
+        async function handleInput() {
+            const input = textarea.value.trim();
+            if (!input) return;
+
+            try {
+                const parsedData = JSON.parse(input);
+                const paths = await window.electronAPI.extractPaths(input);
+
+                if (paths && paths.error) {
+                    showError(paths.error);
+                    return;
+                }
+
+                if (Array.isArray(paths)) {
+                    updatePathSelect(paths);
+                    selectContainer.style.display = 'block';
+                    errorMessage.classList.remove('visible');
+                } else {
+                    showError('Invalid response format');
+                }
+            } catch (error) {
+                showError('Invalid JSON format: ' + error.message);
+            }
+        }
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.add('visible');
+            selectContainer.style.display = 'none';
+        }
+
+        function updatePathSelect(paths) {
+            pathSelect.innerHTML = '<option value="">Select a field to extract...</option>';
+            paths.forEach(path => {
+                const option = document.createElement('option');
+                option.value = path;
+                option.textContent = path;
+                pathSelect.appendChild(option);
+            });
+        }
+
+        async function handlePathSelect() {
+            const selectedPath = pathSelect.value;
+            if (!selectedPath) return;
+
+            try {
+                const values = await window.electronAPI.extractValues({
+                    jsonString: textarea.value,
+                    path: selectedPath
+                });
+
+                if (values && values.error) {
+                    showError(values.error);
+                    return;
+                }
+
+                if (Array.isArray(values)) {
+                    const result = values.join('\n');
+                    await window.electronAPI.copyToClipboard(result);
+                    
+                    resultDiv.textContent = result;
+                    resultDiv.classList.add('visible');
+                    
+                    successMessage.textContent = 'Copied to clipboard!';
+                    
+                    setTimeout(() => {
+                        window.electronAPI.closeExtractValue();
+                    }, 2000);
+                } else {
+                    showError('Invalid values response format');
+                }
+            } catch (error) {
+                showError('Failed to extract values: ' + error.message);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            textarea.focus();
+        });
+
+        let inputTimeout;
+        textarea.addEventListener('input', () => {
+            clearTimeout(inputTimeout);
+            inputTimeout = setTimeout(handleInput, 100);
+        });
+
+        pathSelect.addEventListener('change', handlePathSelect);
+
+        document.addEventListener('keyup', (event) => {
+            if (event.key === 'Escape') {
+                window.electronAPI.closeExtractValue();
+            }
+        });
+    </script>
+</body>
+</html>

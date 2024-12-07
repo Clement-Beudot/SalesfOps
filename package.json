@@ -1,0 +1,74 @@
+{
+  "name": "SalesfOps",
+  "version": "0.1.0",
+  "description": "A collection of productivity micro-tools for operations teams, with a focus on Salesforce workflows",
+  "keywords": [
+    "salesforce",
+    "productivity",
+    "automation",
+    "utilities",
+    "operations",
+    "productivity-tools",
+    "salesforce-tools",
+    "id-lookup",
+    "search-tools",
+    "data-extraction",
+    "json-tools",
+    "batch-processing",
+    "keyboard-shortcuts",
+    "dev-tools",
+    "ops-tools",
+    "business-tools"
+  ],
+  "main": "main.js",
+  "author": "Clément Beudot",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^26.6.10",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.example.SalesfOps",
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node",
+      "node_modules/electron-store/**/*",
+      "src/store-schema.js"
+    ],
+    "productName": "SalesfOps",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "settings.html",
+      "assets/**/*",
+      "src/**/*",
+      "node_modules/**/*"
+    ],
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "assets/icon.png"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.png"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon.png"
+    }
+  },
+  "dependencies": {
+    "save-dev": "^0.0.1-security"
+  },
+  "homepage": "https://github.com/Clement-Beudot/SalesfOps#readme"
+}

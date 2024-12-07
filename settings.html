@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <meta name="color-scheme" content="dark">
+    <title>SalesfOps Settings</title>
+    <link rel="stylesheet" href="src/styles/dark-input.css">
+</head>
+<body>
+    <div class="settings-container">
+        <h1>SalesfOps Settings</h1>
+        <form id="settings-form" class="settings-form">
+            <div class="form-group">
+                <label for="salesforceInstanceUrl">Salesforce Instance URL</label>
+                <input type="text" 
+                       id="salesforceInstanceUrl" 
+                       data-setting
+                       placeholder="https://your-instance.salesforce.com">
+            </div>
+
+            <div class="section-divider">
+                <h2>Core Shortcuts</h2>
+            </div>
+
+            <div class="shortcut-info mb-6">
+                <p class="text-sm text-gray-400 mb-2">How to set up shortcuts:</p>
+                <ul class="text-sm text-gray-400 list-disc pl-6">
+                    <li>Use <code>CommandOrControl</code> for the main modifier key (Command ⌘ on macOS, Ctrl on Windows/Linux)</li>
+                    <li>Add modifiers with <code>+</code>: <code>Shift</code>, <code>Alt</code> (or <code>Option</code> on macOS)</li>
+                    <li>End with a letter or number: <code>CommandOrControl+Shift+O</code></li>
+                    <li>Examples:
+                        <ul class="list-disc pl-6 mt-1">
+                            <li><code>CommandOrControl+Shift+O</code></li>
+                            <li><code>CommandOrControl+Alt+S</code></li>
+                            <li><code>CommandOrControl+Shift+1</code></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="form-group shortcut-group">
+                <div class="shortcut-header">
+                    <div class="tooltip-container">
+                        <label for="openSalesforceIdShortcut">Open Salesforce ID Shortcut</label>
+                        <span class="tooltip-icon">💡</span>
+                        <span class="tooltip-text">
+                            Quickly open any Salesforce record by entering its ID. The shortcut will open a small input window where you can paste or type any Salesforce ID, and pressing Enter will open it in your default browser.
+                        </span>
+                    </div>
+                    <div class="active-toggle">
+                        <input type="checkbox" 
+                               id="openSalesforceIdActive" 
+                               data-setting>
+                        <label for="openSalesforceIdActive">Active</label>
+                    </div>
+                </div>
+                <input type="text" 
+                       id="openSalesforceIdShortcut" 
+                       data-setting
+                       placeholder="CommandOrControl+Shift+O">
+                <small class="help-text">
+                    Quickly open a Salesforce record by entering its ID
+                </small>
+            </div>
+
+            <div class="form-group shortcut-group">
+                <div class="shortcut-header">
+                    <div class="tooltip-container">
+                        <label for="concatenateStringShortcut">Concatenate Strings Shortcut</label>
+                        <span class="tooltip-icon">💡</span>
+                        <span class="tooltip-text">
+                            Format a list of IDs or strings into a SOQL-ready IN clause. Paste your list of values (separated by spaces or new lines) and get them automatically wrapped in quotes and parentheses, ready to be used in SOQL queries.
+                        </span>
+                    </div>
+                    <div class="active-toggle">
+                        <input type="checkbox" 
+                               id="concatenateStringActive" 
+                               data-setting>
+                        <label for="concatenateStringActive">Active</label>
+                    </div>
+                </div>
+                <input type="text" 
+                       id="concatenateStringShortcut" 
+                       data-setting
+                       placeholder="CommandOrControl+Shift+C">
+                <small class="help-text">
+                    Format a list of IDs into a SOQL-ready IN clause
+                </small>
+            </div>
+
+            <div class="form-group shortcut-group">
+                <div class="shortcut-header">
+                    <div class="tooltip-container">
+                        <label for="searchInSalesforceShortcut">Search in Salesforce Shortcut</label>
+                        <span class="tooltip-icon">💡</span>
+                        <span class="tooltip-text">
+                            Perform a global search in Salesforce directly from anywhere. The shortcut opens a search input window - just type your search terms and press Enter to search across all Salesforce objects.
+                        </span>
+                    </div>
+                    <div class="active-toggle">
+                        <input type="checkbox" 
+                               id="searchInSalesforceActive" 
+                               data-setting>
+                        <label for="searchInSalesforceActive">Active</label>
+                    </div>
+                </div>
+                <input type="text" 
+                       id="searchInSalesforceShortcut" 
+                       data-setting
+                       placeholder="CommandOrControl+Shift+S">
+                <small class="help-text">
+                    Perform a global search in Salesforce
+                </small>
+            </div>
+
+            <div class="form-group shortcut-group">
+                <div class="shortcut-header">
+                    <div class="tooltip-container">
+                        <label for="openMultipleIdsShortcut">Open Multiple IDs Shortcut</label>
+                        <span class="tooltip-icon">💡</span>
+                        <span class="tooltip-text">
+                            Open multiple Salesforce records simultaneously. Paste a list of IDs (separated by spaces or new lines) and they will all open in separate browser tabs. Useful for batch reviewing of records.
+                        </span>
+                    </div>
+                    <div class="active-toggle">
+                        <input type="checkbox" 
+                               id="openMultipleIdsActive" 
+                               data-setting>
+                        <label for="openMultipleIdsActive">Active</label>
+                    </div>
+                </div>
+                <input type="text" 
+                       id="openMultipleIdsShortcut" 
+                       data-setting
+                       placeholder="CommandOrControl+Shift+M">
+                <small class="help-text">
+                    Open multiple Salesforce records simultaneously
+                </small>
+            </div>
+
+            <div class="form-group shortcut-group">
+                <div class="shortcut-header">
+                    <div class="tooltip-container">
+                        <label for="extractValueShortcut">Extract Json values Shortcut</label>
+                        <span class="tooltip-icon">💡</span>
+                        <span class="tooltip-text">
+                            Extract and format specific values from JSON data. Paste your JSON, select the field you want to extract, and get a clean list of values copied to your clipboard. Perfect for data extraction and analysis.
+                        </span>
+                    </div>
+                    <div class="active-toggle">
+                        <input type="checkbox" 
+                               id="extractValueActive" 
+                               data-setting>
+                        <label for="extractValueActive">Active</label>
+                    </div>
+                </div>
+                <input type="text" 
+                       id="extractValueShortcut" 
+                       data-setting
+                       placeholder="CommandOrControl+Shift+U">
+                <small class="help-text">
+                    Extract and format values from JSON data
+                </small>
+            </div>
+
+            <div class="form-group">
+                <label for="maxOpeningTabs">Maximum Opening Tabs</label>
+                <input type="number" 
+                       id="maxOpeningTabs" 
+                       data-setting
+                       min="1"
+                       value="10"
+                       placeholder="10">
+                <small class="help-text">
+                    Maximum number of tabs that can be opened at once
+                </small>
+            </div>
+
+            <div class="section-divider">
+                <h2>Custom Searches</h2>
+            </div>
+
+            <div class="form-group shortcut-group">
+                <div class="shortcut-header">
+                    <div class="tooltip-container">
+                        <label for="customSearchShortcut">Custom Search Shortcut</label>
+                        <span class="tooltip-icon">💡</span>
+                        <span class="tooltip-text">
+                            Access your custom search configurations. Configure and use predefined search templates to quickly search in specific domains or with specific parameters. Customize search URLs and parameters in settings.
+                        </span>
+                    </div>
+                    <div class="active-toggle">
+                        <input type="checkbox" 
+                               id="customSearchActive" 
+                               data-setting>
+                        <label for="customSearchActive">Active</label>
+                    </div>
+                </div>
+                <input type="text" 
+                       id="customSearchShortcut" 
+                       data-setting
+                       placeholder="CommandOrControl+Shift+F">
+                <small class="help-text">
+                    Access your custom search configurations
+                </small>
+            </div>
+
+            <div class="custom-searches-container">
+                <label>Custom Search Configurations</label>
+                <div id="customSearches" class="custom-searches"></div>
+                <button type="button" class="secondary-button mt-4" onclick="addCustomSearch()">
+                    Add Custom Search
+                </button>
+            </div>
+
+            <div class="submit-container">
+                <div id="save-message" class="save-message"></div>
+                <button type="submit" class="submit-button">Save Settings</button>
+            </div>
+        </form>
+    </div>
+
+    <template id="customSearchTemplate">
+        <div class="custom-search-item">
+            <div class="form-group">
+                <label>Label</label>
+                <input type="text" class="search-label dark-input" required>
+            </div>
+            <div class="form-group">
+                <label>URL (use {@} as placeholder for search terms)</label>
+                <input type="text" class="search-url dark-input" required>
+            </div>
+            <div class="search-options">
+                <label class="checkbox-container">
+                    <input type="checkbox" class="search-activate">
+                    Activate Search
+                </label>
+                <label class="checkbox-container">
+                    <input type="checkbox" class="search-allow-spaces">
+                    Allow Spaces in Search
+                </label>
+            </div>
+            <button type="button" class="remove-button" onclick="removeCustomSearch(this)">
+                Remove
+            </button>
+        </div>
+    </template>
+
+    <script>
+        function addCustomSearch() {
+            const template = document.getElementById('customSearchTemplate');
+            const container = document.getElementById('customSearches');
+            const clone = template.content.cloneNode(true);
+            container.appendChild(clone);
+        }
+
+        function removeCustomSearch(button) {
+            button.closest('.custom-search-item').remove();
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            const settings = await window.electronAPI.getSettings();
+            
+            document.querySelectorAll('[data-setting]').forEach(input => {
+                if (input.type === 'checkbox') {
+                    input.checked = settings[input.id] !== false;
+                } else {
+                    input.value = settings[input.id] || '';
+                }
+            });
+            
+            if (settings.customSearches && Array.isArray(settings.customSearches)) {
+                settings.customSearches.forEach(search => {
+                    addCustomSearch();
+                    const lastItem = document.querySelector('.custom-search-item:last-child');
+                    lastItem.querySelector('.search-label').value = search.label;
+                    lastItem.querySelector('.search-url').value = search.url;
+                    lastItem.querySelector('.search-activate').checked = search.activateSearch;
+                    lastItem.querySelector('.search-allow-spaces').checked = search.allowSpaces;
+                });
+            }
+        });
+
+        document.getElementById('settings-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const settings = {};
+            
+            document.querySelectorAll('[data-setting]').forEach(input => {
+                if (input.type === 'checkbox') {
+                    settings[input.id] = input.checked;
+                } else {
+                    let value = input.value;
+                    if (input.type === 'number') {
+                        value = parseInt(value, 10);
+                        if (isNaN(value)) {
+                            value = input.min ? parseInt(input.min, 10) : 0;
+                        }
+                    }
+                    settings[input.id] = value;
+                }
+            });
+            
+            const customSearches = [];
+            document.querySelectorAll('.custom-search-item').forEach(item => {
+                customSearches.push({
+                    label: item.querySelector('.search-label').value,
+                    url: item.querySelector('.search-url').value,
+                    activateSearch: item.querySelector('.search-activate').checked,
+                    allowSpaces: item.querySelector('.search-allow-spaces').checked
+                });
+            });
+            settings.customSearches = customSearches;
+            
+            await window.electronAPI.saveSettings(settings);
+            
+            const saveMessage = document.getElementById('save-message');
+            saveMessage.textContent = 'Settings saved successfully!';
+            saveMessage.classList.add('visible');
+            setTimeout(() => {
+                saveMessage.classList.remove('visible');
+            }, 3000);
+        });
+    </script>
+</body>
+</html>

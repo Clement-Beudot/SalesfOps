@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <title>Open Multiple Salesforce IDs</title>
+    <link rel="stylesheet" href="../styles/dark-input.css">
+</head>
+<body class="modal-window">
+    <div class="textarea-container">
+        <textarea 
+            id="ids-input"
+            class="dark-textarea"
+            placeholder="Enter Salesforce IDs (separated by spaces or new lines)" 
+            spellcheck="false"
+            autocomplete="off"
+            autofocus
+        ></textarea>
+        <div class="hint">
+            Press <span class="key">↵</span> to open or <span class="key">Esc</span> to cancel
+        </div>
+    </div>
+
+    <script>
+        const textarea = document.getElementById('ids-input');
+
+        document.addEventListener('DOMContentLoaded', () => {
+            textarea.focus();
+            textarea.select();
+        });
+        
+        textarea.addEventListener('keyup', async (event) => {
+            if (event.key === 'Enter' && !event.shiftKey && textarea.value.trim()) {
+                window.electronAPI.openMultipleSalesforceIds(textarea.value);
+            } else if (event.key === 'Escape') {
+                window.electronAPI.closeMultipleIdsInput();
+            }
+        });
+
+        textarea.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+            }
+        });
+
+        textarea.addEventListener('focus', () => {
+            textarea.select();
+        });
+    </script>
+</body>
+</html>

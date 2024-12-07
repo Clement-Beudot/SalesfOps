@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <meta name="color-scheme" content="dark">
+    <title>Custom Search</title>
+    <link rel="stylesheet" href="../styles/dark-input.css">
+</head>
+<body class="modal-window">
+    <div class="input-container">
+        <input type="text" 
+               id="search-input"
+               class="dark-input"
+               placeholder="Search domain..." 
+               list="search-options"
+               autocomplete="off"
+               autofocus>
+        <datalist id="search-options">
+        </datalist>
+        <div class="hint">
+            Press <span class="key">↵</span> to select or <span class="key">Esc</span> to cancel
+        </div>
+    </div>
+
+    <script>
+        let searches = [];
+        let selectedSearchId = null;
+        let isSearchTermMode = false;
+
+        const input = document.getElementById('search-input');
+        const datalist = document.getElementById('search-options');
+
+        window.electronAPI.on('custom-searches', (event, customSearches) => {
+            searches = customSearches;
+            updateDatalist();
+        });
+
+        function updateDatalist() {
+            datalist.innerHTML = searches.map((search, index) => 
+                `<option value="${search.label}">`
+            ).join('');
+        }
+
+        function getMatchingSearches(inputValue) {
+            const searchTerm = inputValue.toLowerCase();
+            return searches.filter(search => 
+                search.label.toLowerCase().includes(searchTerm)
+            );
+        }
+
+        input.addEventListener('keyup', (event) => {
+            if (event.key === 'Enter') {
+                if (!isSearchTermMode) {
+                    const currentValue = input.value.trim();
+                    const matches = getMatchingSearches(currentValue);
+
+                    if (matches.length === 1) {
+                        selectedSearchId = searches.findIndex(s => s.label === matches[0].label);
+                        const search = searches[selectedSearchId];
+                        
+                        if (search.activateSearch) {
+                            isSearchTermMode = true;
+                            input.value = '';
+                            input.placeholder = 'Enter search terms...';
+                            datalist.innerHTML = '';
+                            input.focus();
+                        } else {
+                            window.electronAPI.executeCustomSearch({ 
+                                searchId: selectedSearchId,
+                                searchTerm: ''
+                            });
+                        }
+                    }
+                    else if (matches.some(s => s.label === currentValue)) {
+                        selectedSearchId = searches.findIndex(s => s.label === currentValue);
+                        const search = searches[selectedSearchId];
+                        
+                        if (search.activateSearch) {
+                            isSearchTermMode = true;
+                            input.value = '';
+                            input.placeholder = 'Enter search terms...';
+                            datalist.innerHTML = '';
+                            input.focus();
+                        } else {
+                            window.electronAPI.executeCustomSearch({ 
+                                searchId: selectedSearchId,
+                                searchTerm: ''
+                            });
+                        }
+                    }
+                } else {
+                    window.electronAPI.executeCustomSearch({
+                        searchId: selectedSearchId,
+                        searchTerm: input.value.trim()
+                    });
+                }
+            } else if (event.key === 'Escape') {
+                if (isSearchTermMode) {
+                    isSearchTermMode = false;
+                    input.value = '';
+                    input.placeholder = 'Search domain...';
+                    updateDatalist();
+                    input.focus();
+                } else {
+                    window.electronAPI.closeCustomSearch();
+                }
+            } else if (!isSearchTermMode) {
+                const matches = getMatchingSearches(input.value);
+                if (matches.length === 1) {
+                    input.value = matches[0].label;
+                    input.setSelectionRange(0, input.value.length);
+                }
+            }
+        });
+
+        input.addEventListener('keydown', (event) => {
+            if (!isSearchTermMode && event.key !== 'Enter' && event.key !== 'Escape') {
+                const matches = getMatchingSearches(input.value);
+                if (matches.length === 1 && input.selectionStart === input.selectionEnd) {
+                    const originalValue = input.value;
+                    setTimeout(() => {
+                        if (input.value !== originalValue) {
+                            input.setSelectionRange(originalValue.length, input.value.length);
+                        }
+                    }, 0);
+                }
+            }
+        });
+    </script>
+</body>
+</html>

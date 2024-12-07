@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <meta name="color-scheme" content="dark">
+    <title>Search in Salesforce</title>
+    <link rel="stylesheet" href="../styles/dark-input.css">
+</head>
+<body class="modal-window">
+    <div class="input-container">
+        <input type="text" 
+               id="search-input"
+               class="dark-input"
+               placeholder="Enter search query" 
+               spellcheck="false"
+               autocomplete="off"
+               autofocus>
+        <div class="hint">
+            Press <span class="key">↵</span> to search or <span class="key">Esc</span> to cancel
+        </div>
+    </div>
+
+    <script>
+        const input = document.getElementById('search-input');
+
+        document.addEventListener('DOMContentLoaded', () => {
+            input.focus();
+            input.select();
+        });
+
+        function utoa(str) {
+            return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g,
+                function toSolidBytes(match, p1) {
+                    return String.fromCharCode('0x' + p1);
+                }));
+        }
+        
+        input.addEventListener('keyup', (event) => {
+            if (event.key === 'Enter' && input.value.trim()) {
+                const searchPayload = `{"componentDef":"forceSearch:searchPageDesktop","attributes":{"term":"${input.value.trim()}","scopeMap":{"type":"TOP_RESULTS","namespace":"","label":"Top Results","labelPlural":"Top Results","resultsCmp":"forceSearch:predictedResults"},"context":{"FILTERS":{},"searchSource":"ASSISTANT_DIALOG","disableIntentQuery":false,"disableSpellCorrection":false,"debugInfo":{"appName":"LightningSales","appType":"Standard","appNamespace":"standard","location":"forceSearch:searchPageDesktop"}},"groupId":"DEFAULT"},"state":{}}`
+                const searchQuery = utoa(searchPayload);
+                window.electronAPI.searchInSalesforce(searchQuery);
+            } else if (event.key === 'Escape') {
+                window.electronAPI.closeSearchInput();
+            }
+        });
+
+        input.addEventListener('focus', () => {
+            input.select();
+        });
+    </script>
+</body>
+</html>

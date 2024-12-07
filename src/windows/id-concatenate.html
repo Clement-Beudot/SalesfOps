@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <meta name="color-scheme" content="dark">
+    <title>Concatenate Strings</title>
+    <link rel="stylesheet" href="../styles/dark-input.css">
+</head>
+<body class="modal-window">
+    <div class="textarea-container">
+        <textarea 
+            id="string-input" 
+            class="dark-textarea" 
+            placeholder="Enter strings (separated by spaces or new lines)"
+            autofocus
+        ></textarea>
+        <div class="hint">
+            Press <span class="key">↵</span> to concatenate or <span class="key">Esc</span> to cancel
+        </div>
+        <div id="success-message" class="success-message"></div>
+        <div id="result" class="result"></div>
+        
+    </div>
+
+    <script>
+        const textarea = document.getElementById('string-input');
+        const successMessage = document.getElementById('success-message');
+        const resultDiv = document.getElementById('result');
+
+        document.addEventListener('DOMContentLoaded', () => {
+            textarea.focus();
+            textarea.select();
+        });
+        
+
+        function concatenateStrings(input) {
+            const strings = input
+                .split(/[\s\n]+/)
+                .filter(s => s.trim())
+                .map(s => `'${s.trim()}'`);
+            return `(${strings.join(', ')})`;
+        }
+
+        textarea.addEventListener('keyup', async (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                const input = textarea.value.trim();
+                if (input) {
+                    const result = concatenateStrings(input);
+                    
+                    await window.electronAPI.copyToClipboard(result);
+                    
+                    resultDiv.textContent = result;
+                    resultDiv.classList.add('visible');
+                    
+                    successMessage.textContent = 'Copied to clipboard!';
+                    
+                    setTimeout(() => {
+                        window.electronAPI.closeStringConcatenator();
+                    }, 2000);
+                }
+            } else if (event.key === 'Escape') {
+                window.electronAPI.closeStringConcatenator();
+            }
+        });
+        
+        textarea.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+            }
+        });
+    </script>
+</body>
+</html>
