@@ -16,16 +16,20 @@
             placeholder="Enter strings (separated by spaces or new lines)"
             autofocus
         ></textarea>
+        <div class="checkbox-container">
+            <input type="checkbox" id="newlines-only" name="newlines-only">
+            <label for="newlines-only">Split by newlines only (ignore spaces)</label>
+        </div>
         <div class="hint">
             Press <span class="key">↵</span> to concatenate or <span class="key">Esc</span> to cancel
         </div>
         <div id="success-message" class="success-message"></div>
-        <div id="result" class="result"></div>
-        
+        <div id="result" class="result"></div>  
     </div>
 
     <script>
         const textarea = document.getElementById('string-input');
+        const newlinesOnlyCheckbox = document.getElementById('newlines-only');
         const successMessage = document.getElementById('success-message');
         const resultDiv = document.getElementById('result');
 
@@ -34,10 +38,10 @@
             textarea.select();
         });
         
-
-        function concatenateStrings(input) {
+        function concatenateStrings(input, newlinesOnly) {
+            const separator = newlinesOnly ? /\n+/ : /[\s\n]+/;
             const strings = input
-                .split(/[\s\n]+/)
+                .split(separator)
                 .filter(s => s.trim())
                 .map(s => `'${s.trim()}'`);
             return `(${strings.join(', ')})`;
@@ -48,7 +52,8 @@
                 event.preventDefault();
                 const input = textarea.value.trim();
                 if (input) {
-                    const result = concatenateStrings(input);
+                    const newlinesOnly = newlinesOnlyCheckbox.checked;
+                    const result = concatenateStrings(input, newlinesOnly);
                     
                     await window.electronAPI.copyToClipboard(result);
                     

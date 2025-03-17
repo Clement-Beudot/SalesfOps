@@ -89,6 +89,26 @@ html, body {
     color: #666666;
 }
 
+.checkbox-container {
+    margin-top: 12px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+}
+
+.checkbox-container input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    margin-right: 8px;
+    accent-color: #9e0f9e;
+}
+
+.checkbox-container label {
+    font-size: 12px;
+    color: #888;
+    font-weight: normal;
+}
+
 /* Title and text */
 h1 {
     margin-bottom: 40px;
