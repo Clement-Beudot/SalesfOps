@@ -503,3 +503,68 @@ input[type="checkbox"] {
     border-style: solid;
     border-color: transparent #333 transparent transparent;
 }
+
+.update-options {
+    margin-bottom: 20px;
+}
+
+.section-title {
+    margin-bottom: 15px;
+}
+
+.button-group {
+    margin-bottom: 15px;
+}
+
+.field-container {
+    margin-top: 15px;
+}
+
+.field-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+    align-items: flex-end;
+}
+
+.field-column {
+    flex: 1;
+}
+
+.action-column {
+    flex: 0 0 auto;
+}
+
+.field-list {
+    margin-top: 20px;
+    border-top: 1px solid #3d3d3d;
+    padding-top: 15px;
+}
+
+.field-list-item {
+    background: #2d2d2d;
+    padding: 10px;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.remove-button {
+    background: #ff4444;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.add-button {
+    background: #4CAF50;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+}

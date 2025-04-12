@@ -46,6 +46,10 @@ module.exports = {
         type: 'string',
         default: ''
     },
+    updateValuesShortcut: {
+        type: 'string',
+        default: ''
+    },
     openSalesforceIdActive: {
         type: 'boolean',
         default: true
@@ -67,6 +71,10 @@ module.exports = {
         default: true
     },
     extractValueActive: {
+        type: 'boolean',
+        default: true
+    },
+    updateValuesActive: {
         type: 'boolean',
         default: true
     }

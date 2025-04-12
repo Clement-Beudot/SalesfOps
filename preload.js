@@ -20,4 +20,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     extractPaths: (jsonString) => ipcRenderer.invoke('extract-paths', jsonString),
     extractValues: (params) => ipcRenderer.invoke('extract-values', params),
     closeExtractValue: () => ipcRenderer.send('close-extract-value'),
+    parseInput: (input) => ipcRenderer.invoke('parse-input', input),
+    updateJsonValues: (options) => ipcRenderer.invoke('update-json-values', options),
+    updateCsvValues: (options) => ipcRenderer.invoke('update-csv-values', options),
+    restoreWindowSize: () => ipcRenderer.send('restore-window-size'),
+    closeUpdateValues: () => ipcRenderer.send('close-update-values'),
 });
