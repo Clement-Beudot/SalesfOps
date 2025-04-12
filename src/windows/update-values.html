@@ -31,34 +31,34 @@
                     <button id="add-custom-btn" class="secondary-button">Add custom field</button>
                 </div>
                 <div id="select-existing-container" style="display: none; margin-top: 15px;">
-                    <div class="field-row" style="display: flex; gap: 10px; margin-bottom: 15px; align-items: flex-end;">
-                        <div style="flex: 1;">
+                    <div class="field-row">
+                        <div class="field-column">
                             <label for="field-select">Select field:</label>
-                            <select id="field-select" style="width: 100%;">
+                            <select id="field-select" class="dark-select">
                                 <option value="">Choose a field...</option>
                             </select>
                         </div>
-                        <div style="flex: 1;">
+                        <div class="field-column">
                             <label for="existing-value">New value:</label>
                             <input type="text" id="existing-value" class="dark-input" placeholder="Enter new value">
                         </div>
-                        <div>
-                            <button id="add-existing-btn" style="background: #4CAF50; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Add</button>
+                        <div class="button-column">
+                            <button id="add-existing-btn" class="add-button">Add</button>
                         </div>
                     </div>
                 </div>
                 <div id="add-custom-container" style="display: none; margin-top: 15px;">
-                    <div class="field-row" style="display: flex; gap: 10px; margin-bottom: 15px; align-items: flex-end;">
-                        <div style="flex: 1;">
+                    <div class="field-row">
+                        <div class="field-column">
                             <label for="custom-field">Field name:</label>
                             <input type="text" id="custom-field" class="dark-input" placeholder="Enter field name">
                         </div>
-                        <div style="flex: 1;">
+                        <div class="field-column">
                             <label for="custom-value">Value:</label>
                             <input type="text" id="custom-value" class="dark-input" placeholder="Enter value">
                         </div>
-                        <div>
-                            <button id="add-custom-field-btn" style="background: #4CAF50; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Add</button>
+                        <div class="button-column">
+                            <button id="add-custom-field-btn" class="add-button">Add</button>
                         </div>
                     </div>
                 </div>
