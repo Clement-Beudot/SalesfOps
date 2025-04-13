@@ -77,6 +77,7 @@ class Application {
         const customSearchActive = await this.settings.get('customSearchActive');
         const extractValueActive = await this.settings.get('extractValueActive');
         const updateValuesActive = await this.settings.get('updateValuesActive');
+        const snippetsActive = await this.settings.get('snippetsActive');
     
         if (openSalesforceIdActive) {
             menuItems.push({ 
@@ -131,6 +132,14 @@ class Application {
                 label: 'Select custom search',
                 click: () => this.commands.customSearch.createWindow(),
                 accelerator: await this.getShortcutLabel('customSearchShortcut')
+            });
+        }
+
+        if (snippetsActive) {
+            menuItems.push({
+                label: 'Insert Text Snippet',
+                click: () => this.commands.snippets.createWindow(),
+                accelerator: await this.getShortcutLabel('snippetsShortcut')
             });
         }
     

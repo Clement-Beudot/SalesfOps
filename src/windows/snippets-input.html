@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <meta name="color-scheme" content="dark">
+    <title>Text Snippets</title>
+    <link rel="stylesheet" href="../styles/dark-input.css">
+</head>
+<body class="modal-window">
+    <div class="input-container">
+        <input type="text" 
+               id="snippet-input"
+               class="dark-input"
+               placeholder="Enter snippet keyword..." 
+               list="snippet-options"
+               autocomplete="off"
+               autofocus>
+        <datalist id="snippet-options">
+        </datalist>
+        <div class="hint">
+            Press <span class="key">↵</span> to copy or <span class="key">Esc</span> to cancel
+        </div>
+        <div id="success-message" class="success-message"></div>
+    </div>
+
+    <script>
+        let snippets = [];
+
+        const input = document.getElementById('snippet-input');
+        const datalist = document.getElementById('snippet-options');
+        const successMessage = document.getElementById('success-message');
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            input.focus();
+            await loadSnippets();
+        });
+
+        async function loadSnippets() {
+            try {
+                snippets = await window.electronAPI.getSnippets();
+                updateDatalist();
+            } catch (error) {
+                console.error('Error loading snippets:', error);
+            }
+        }
+
+        function updateDatalist() {
+            datalist.innerHTML = '';
+            if (snippets && snippets.length > 0) {
+                snippets.forEach(snippet => {
+                    const option = document.createElement('option');
+                    option.value = snippet.keyword;
+                    datalist.appendChild(option);
+                });
+            }
+        }
+
+        function findMatchingSnippet(keyword) {
+            if (!keyword || !snippets || snippets.length === 0) return null;
+            return snippets.find(s => s.keyword.toLowerCase() === keyword.toLowerCase());
+        }
+
+        input.addEventListener('keyup', async (event) => {
+            if (event.key === 'Enter') {
+                const keyword = input.value.trim();
+                if (!keyword) return;
+                
+                await loadSnippets();
+                
+                const snippet = findMatchingSnippet(keyword);
+                if (snippet) {
+                    await window.electronAPI.copySnippetToClipboard(snippet.replacement);
+                    
+                    successMessage.textContent = 'Copied to clipboard!';
+                    successMessage.classList.add('visible');
+                    
+                    input.disabled = true;
+                    
+                    setTimeout(() => {
+                        window.electronAPI.closeSnippets();
+                    }, 200);
+                }
+            } else if (event.key === 'Escape') {
+                window.electronAPI.closeSnippets();
+            }
+        });
+    </script>
+</body>
+</html>

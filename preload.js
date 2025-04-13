@@ -25,4 +25,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     updateCsvValues: (options) => ipcRenderer.invoke('update-csv-values', options),
     restoreWindowSize: () => ipcRenderer.send('restore-window-size'),
     closeUpdateValues: () => ipcRenderer.send('close-update-values'),
+    copySnippetToClipboard: (text) => ipcRenderer.invoke('copy-snippet-to-clipboard', text),
+    getSnippets: () => ipcRenderer.invoke('get-snippets'),
+    copySnippetToClipboard: (text) => ipcRenderer.invoke('copy-snippet-to-clipboard', text),
+    closeSnippets: () => ipcRenderer.send('close-snippets'),
 });
