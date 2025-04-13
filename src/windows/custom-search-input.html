@@ -28,6 +28,12 @@
         let searches = [];
         let selectedSearchId = null;
         let isSearchTermMode = false;
+        let currentMatchIndex = -1;
+        let currentMatches = [];
+        let userIsTyping = false;
+        let userTypedValue = '';
+        let lastTypingTime = 0;
+        const typingTimeout = 300;
 
         const input = document.getElementById('search-input');
         const datalist = document.getElementById('search-options');
@@ -46,9 +52,43 @@
         function getMatchingSearches(inputValue) {
             const searchTerm = inputValue.toLowerCase();
             return searches.filter(search => 
-                search.label.toLowerCase().includes(searchTerm)
+                search.label.toLowerCase().startsWith(searchTerm)
             );
         }
+
+        input.addEventListener('input', (event) => {
+            if (!isSearchTermMode) {
+                const now = Date.now();
+                
+                if (now - lastTypingTime < typingTimeout) {
+                    userIsTyping = true;
+                    userTypedValue = input.value;
+                } else {
+                    userIsTyping = true;
+                    userTypedValue = input.value;
+                }
+                
+                lastTypingTime = now;
+                
+                clearTimeout(input.typingTimer);
+                input.typingTimer = setTimeout(() => {
+                    if (userIsTyping) {
+                        userIsTyping = false;
+                        
+                        const matches = getMatchingSearches(userTypedValue);
+                        if (matches.length === 1) {
+                            if (matches[0].label.toLowerCase() !== userTypedValue.toLowerCase()) {
+                                input.value = matches[0].label;
+                                input.setSelectionRange(userTypedValue.length, input.value.length);
+                            }
+                        }
+                    }
+                }, typingTimeout);
+                
+                currentMatches = getMatchingSearches(input.value);
+                currentMatchIndex = -1;
+            }
+        });
 
         input.addEventListener('keyup', (event) => {
             if (event.key === 'Enter') {
@@ -106,25 +146,31 @@
                 } else {
                     window.electronAPI.closeCustomSearch();
                 }
-            } else if (!isSearchTermMode) {
-                const matches = getMatchingSearches(input.value);
-                if (matches.length === 1) {
-                    input.value = matches[0].label;
-                    input.setSelectionRange(0, input.value.length);
-                }
             }
         });
 
         input.addEventListener('keydown', (event) => {
-            if (!isSearchTermMode && event.key !== 'Enter' && event.key !== 'Escape') {
-                const matches = getMatchingSearches(input.value);
-                if (matches.length === 1 && input.selectionStart === input.selectionEnd) {
-                    const originalValue = input.value;
-                    setTimeout(() => {
-                        if (input.value !== originalValue) {
-                            input.setSelectionRange(originalValue.length, input.value.length);
-                        }
-                    }, 0);
+            if (!isSearchTermMode) {
+                if (event.key === 'ArrowDown' && currentMatches.length > 0) {
+                    event.preventDefault();
+                    currentMatchIndex = (currentMatchIndex + 1) % currentMatches.length;
+                    input.value = currentMatches[currentMatchIndex].label;
+                    input.setSelectionRange(input.value.length, input.value.length);
+                    userIsTyping = false;
+                } else if (event.key === 'ArrowUp' && currentMatches.length > 0) {
+                    event.preventDefault();
+                    currentMatchIndex = currentMatchIndex <= 0 ? currentMatches.length - 1 : currentMatchIndex - 1;
+                    input.value = currentMatches[currentMatchIndex].label;
+                    input.setSelectionRange(input.value.length, input.value.length);
+                    userIsTyping = false;
+                } else if (event.key === 'Tab') {
+                    const matches = getMatchingSearches(input.value);
+                    if (matches.length === 1) {
+                        event.preventDefault();
+                        input.value = matches[0].label;
+                        input.setSelectionRange(input.value.length, input.value.length);
+                        userIsTyping = false;
+                    }
                 }
             }
         });
