@@ -1,6 +1,6 @@
 {
   "name": "SalesfOps",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "A collection of productivity micro-tools for operations teams, with a focus on Salesforce workflows",
   "keywords": [
     "salesforce",
@@ -68,6 +68,8 @@
     }
   },
   "dependencies": {
+    "csv-parse": "^5.6.0",
+    "csv-stringify": "^6.5.2",
     "save-dev": "^0.0.1-security"
   },
   "homepage": "https://github.com/Clement-Beudot/SalesfOps#readme"

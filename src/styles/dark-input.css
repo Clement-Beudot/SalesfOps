@@ -70,6 +70,8 @@ html, body {
 
 .dark-input {
     padding: 8px 12px;
+    height: 36px;
+    box-sizing: border-box;
 }
 
 .dark-textarea {
@@ -80,7 +82,7 @@ html, body {
     font-family: monospace;
 }
 
-.dark-input:focus, .dark-textarea:focus, input[data-setting]:focus {
+.dark-input:focus, .dark-textarea:focus, input[data-setting]:focus, .dark-select:focus {
     border-color: #9e0f9e;
     box-shadow: 0 0 0 1px rgba(158, 15, 158, 0.3);
 }
@@ -89,24 +91,141 @@ html, body {
     color: #666666;
 }
 
-.checkbox-container {
-    margin-top: 12px;
-    margin-bottom: 8px;
-    display: flex;
-    align-items: center;
+/* Select inputs */
+.select-container {
+    margin-top: 20px;
+    width: 100%;
 }
 
-.checkbox-container input[type="checkbox"] {
-    width: 14px;
-    height: 14px;
-    margin-right: 8px;
-    accent-color: #9e0f9e;
+select, .dark-select {
+    width: 100%;
+    background: #2d2d2d;
+    border: 2px solid #3d3d3d;
+    border-radius: 8px;
+    color: #ffffff;
+    font-size: 14px;
+    padding: 10px;
+    margin-bottom: 10px;
+    outline: none;
+    transition: all 0.3s ease;
 }
 
-.checkbox-container label {
+.dark-select {
+    height: 36px;
+    padding: 8px;
+    margin-bottom: 0;
+}
+
+select option {
+    background: #2d2d2d;
+    color: #ffffff;
+    padding: 8px;
+}
+
+/* Buttons */
+.submit-button {
+    padding: 12px 24px;
+    background: #9e0f9e;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s ease;
+}
+
+.submit-button:hover {
+    background: #7e0c7e;
+}
+
+.submit-button:active {
+    transform: translateY(1px);
+}
+
+.secondary-button {
+    background: #2d2d2d;
+    color: white;
+    border: 1px solid #3d3d3d;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.secondary-button:hover {
+    background: #3d3d3d;
+}
+
+.add-button {
+    background: #4CAF50;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.add-button:hover {
+    background: #3d8b40;
+}
+
+.remove-button {
+    background: #ff4444;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.remove-button:hover {
+    background: #ff6666;
+}
+
+/* Messages */
+.error-message {
+    color: #ff4444;
     font-size: 12px;
-    color: #888;
-    font-weight: normal;
+    margin-top: 8px;
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.error-message.visible {
+    opacity: 1;
+}
+
+.success-message {
+    color: #4CAF50;
+    margin-top: 5px;
+    font-size: 12px;
+    text-align: center;
+}
+
+.save-message {
+    color: #4CAF50;
+    font-size: 14px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.save-message.visible {
+    opacity: 1;
+}
+
+/* Results */
+.result {
+    margin-top: 10px;
+    padding: 8px;
+    background: #2d2d2d;
+    border-radius: 6px;
+    font-size: 13px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.result.visible {
+    opacity: 1;
 }
 
 /* Title and text */
@@ -124,6 +243,7 @@ label {
     font-size: 12px;
     color: #888;
     margin-top: 4px;
+    line-height: 1.4;
 }
 
 /* Hints */
@@ -149,52 +269,7 @@ label {
     font-family: monospace;
 }
 
-/* Select inputs */
-.select-container {
-    margin-top: 20px;
-    width: 100%;
-}
-
-select {
-    width: 100%;
-    background: #2d2d2d;
-    border: 2px solid #3d3d3d;
-    border-radius: 8px;
-    color: #ffffff;
-    font-size: 14px;
-    padding: 10px;
-    margin-bottom: 10px;
-    outline: none;
-    transition: all 0.3s ease;
-}
-
-select:focus {
-    border-color: #9e0f9e;
-    box-shadow: 0 0 0 1px rgba(158, 15, 158, 0.3);
-}
-
-select option {
-    background: #2d2d2d;
-    color: #ffffff;
-    padding: 8px;
-}
-
-/* Messages */
-.error-message {
-    color: #ff4444;
-    font-size: 12px;
-    margin-top: 8px;
-    text-align: center;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-}
-
-.error-message.visible {
-    opacity: 1;
-}
-
-
-/* Submit form */
+/* Form layouts */
 .submit-container {
     display: flex;
     align-items: center;
@@ -203,58 +278,89 @@ select option {
     margin-top: 20px;
 }
 
-.save-message {
-    color: #4CAF50;
-    font-size: 14px;
-    opacity: 0;
-    transition: opacity 0.3s ease;
+/* Field row layout for update values */
+.field-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+    align-items: flex-start;
 }
 
-.save-message.visible {
-    opacity: 1;
+.field-column {
+    flex: 1;
 }
 
-.submit-button {
-    padding: 12px 24px;
-    background: #9e0f9e;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 14px;
-    transition: background-color 0.2s ease;
+.button-column {
+    margin-top: 24px; /* Pour aligner le bouton avec les inputs */
 }
 
-.submit-button:hover {
-    background: #7e0c7e;
+.action-column {
+    flex: 0 0 auto;
 }
 
-.submit-button:active {
-    transform: translateY(1px);
+/* Update values specific styles */
+.update-options {
+    margin-bottom: 20px;
 }
 
-/* Results */
-.result {
-    margin-top: 10px;
-    padding: 8px;
+.section-title {
+    margin-bottom: 15px;
+}
+
+.button-group {
+    margin-bottom: 15px;
+}
+
+.field-container {
+    margin-top: 15px;
+}
+
+.field-list {
+    margin-top: 20px;
+    border-top: 1px solid #3d3d3d;
+    padding-top: 15px;
+}
+
+.field-list-item {
     background: #2d2d2d;
+    padding: 10px;
     border-radius: 6px;
-    font-size: 13px;
-    opacity: 0;
-    transition: opacity 0.3s ease;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
-.result.visible {
-    opacity: 1;
+/* Checkbox styling */
+.checkbox-container {
+    margin-top: 12px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
-.success-message {
-    color: #4CAF50;
-    margin-top: 5px;
+.checkbox-container input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    margin-right: 8px;
+    accent-color: #9e0f9e;
+}
+
+.checkbox-container label {
     font-size: 12px;
-    text-align: center;
+    color: #888;
+    font-weight: normal;
 }
 
+input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    margin-right: 0.5rem;
+    accent-color: #9e0f9e;
+}
+
+/* Number input styling */
 input[type="number"] {
     width: 120px;
 }
@@ -265,7 +371,6 @@ input[type="number"]::-webkit-outer-spin-button {
     margin: 0;
 }
 
-
 /* Custom search settings */
 .custom-search-item {
     background: #2d2d2d;
@@ -274,33 +379,29 @@ input[type="number"]::-webkit-outer-spin-button {
     margin-bottom: 15px;
 }
 
-.secondary-button {
+.custom-searches-container {
     background: #2d2d2d;
-    color: white;
     border: 1px solid #3d3d3d;
-    padding: 8px 16px;
-    border-radius: 4px;
-    cursor: pointer;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-top: 1rem;
 }
 
-.secondary-button:hover {
-    background: #3d3d3d;
+.custom-search-item {
+    background: #1a1a1a;
+    padding: 1.5rem;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+    border: 1px solid #3d3d3d;
 }
 
-.remove-button {
-    background: #ff4444;
-    color: white;
-    border: none;
-    padding: 4px 8px;
-    border-radius: 4px;
-    cursor: pointer;
-    margin-top: 10px;
+.search-options {
+    display: flex;
+    gap: 2rem;
+    margin: 1rem 0;
 }
 
-.remove-button:hover {
-    background: #ff6666;
-}
-
+/* Utility classes */
 .mt-4 {
     margin-top: 1rem;
 }
@@ -325,7 +426,6 @@ input[type="number"]::-webkit-outer-spin-button {
     top: 10px;
 }
 
-/* Add decorative line */
 .section-divider::before {
     content: '';
     position: absolute;
@@ -337,54 +437,7 @@ input[type="number"]::-webkit-outer-spin-button {
     z-index: 0;
 }
 
-/* Custom searches container */
-.custom-searches-container {
-    background: #2d2d2d;
-    border: 1px solid #3d3d3d;
-    border-radius: 8px;
-    padding: 1.5rem;
-    margin-top: 1rem;
-}
-
-/* Custom search item styling */
-.custom-search-item {
-    background: #1a1a1a;
-    padding: 1.5rem;
-    border-radius: 8px;
-    margin-bottom: 1.5rem;
-    border: 1px solid #3d3d3d;
-}
-
-/* Search options layout */
-.search-options {
-    display: flex;
-    gap: 2rem;
-    margin: 1rem 0;
-}
-
-.checkbox-container {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-/* Checkbox styling */
-input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-    margin-right: 0.5rem;
-    accent-color: #9e0f9e;
-}
-
-/* Help text enhancement */
-.help-text {
-    color: #888;
-    font-size: 0.875rem;
-    margin-top: 0.25rem;
-    line-height: 1.4;
-}
-
-/* Shortcut group styling */
+/* Shortcut styling */
 .shortcut-group {
     position: relative;
 }
@@ -413,13 +466,11 @@ input[type="checkbox"] {
     color: #888;
 }
 
-/* Inactive shortcuts */
 .shortcut-group.inactive input[type="text"] {
     opacity: 0.5;
     pointer-events: none;
 }
 
-/* Shortcut info styling */
 .shortcut-info {
     background: #2d2d2d;
     border: 1px solid #3d3d3d;
@@ -451,6 +502,7 @@ input[type="checkbox"] {
     margin-bottom: 0.25rem;
 }
 
+/* Tooltip styling */
 .tooltip-container {
     position: relative;
     display: inline-flex;
@@ -492,7 +544,6 @@ input[type="checkbox"] {
     opacity: 1;
 }
 
-/* Add a small arrow */
 .tooltip-text::before {
     content: "";
     position: absolute;

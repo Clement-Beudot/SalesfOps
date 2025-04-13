@@ -4,6 +4,7 @@ const SalesforceSearchCommand = require('./salesforceSearch');
 const SalesforceMultipleIdsCommand = require('./salesforceMultipleIds');
 const CustomSearchCommand = require('./customSearch');
 const ExtractValueCommand = require('./extractValue');
+const UpdateValuesCommand = require('./updateValues');
 
 
 /**
@@ -24,6 +25,7 @@ class CommandManager {
         this.salesforceMultipleIds = new SalesforceMultipleIdsCommand(app, settingsManager);
         this.customSearch = new CustomSearchCommand(app, settingsManager);
         this.extractValue = new ExtractValueCommand(app, settingsManager);
+        this.updateValues = new UpdateValuesCommand(app, settingsManager);
     }
 
     /**
@@ -37,6 +39,7 @@ class CommandManager {
         this.salesforceMultipleIds.setupIpc(ipcMain);
         this.customSearch.setupIpc(ipcMain);
         this.extractValue.setupIpc(ipcMain);
+        this.updateValues.setupIpc(ipcMain);
     }
 
     /**
@@ -86,6 +89,13 @@ class CommandManager {
             const shortcut = await this.settings.get('extractValueShortcut');
             if (shortcut) {
                 globalShortcut.register(shortcut, () => this.extractValue.createWindow());
+            }
+        }
+        
+        if (await this.settings.get('updateValuesActive')) {
+            const shortcut = await this.settings.get('updateValuesShortcut');
+            if (shortcut) {
+                globalShortcut.register(shortcut, () => this.updateValues.createWindow());
             }
         }
     }

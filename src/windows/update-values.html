@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <meta name="color-scheme" content="dark">
+    <title>Update Values</title>
+    <link rel="stylesheet" href="../styles/dark-input.css">
+</head>
+<body class="modal-window">
+    <div class="textarea-container">
+        <div id="input-phase">
+            <textarea 
+                id="input-data"
+                class="dark-textarea"
+                placeholder="Paste your JSON or CSV data here (Cmd/Ctrl + V)" 
+                spellcheck="false"
+                autofocus
+            ></textarea>
+            <div id="error-message" class="error-message"></div>
+        </div>
+        <div id="update-phase" style="display: none; width: 100%;">
+            <div id="format-indicator" style="margin-bottom: 10px; font-size: 12px; color: #888;"></div>
+            
+            <div class="update-options">
+                <h3 style="margin-bottom: 15px;">Add fields to update</h3>
+                
+                <div style="margin-bottom: 15px;">
+                    <button id="select-existing-btn" class="secondary-button" style="margin-right: 10px;">Select existing field</button>
+                    <button id="add-custom-btn" class="secondary-button">Add custom field</button>
+                </div>
+                <div id="select-existing-container" style="display: none; margin-top: 15px;">
+                    <div class="field-row">
+                        <div class="field-column">
+                            <label for="field-select">Select field:</label>
+                            <select id="field-select" class="dark-select">
+                                <option value="">Choose a field...</option>
+                            </select>
+                        </div>
+                        <div class="field-column">
+                            <label for="existing-value">New value:</label>
+                            <input type="text" id="existing-value" class="dark-input" placeholder="Enter new value">
+                        </div>
+                        <div class="button-column">
+                            <button id="add-existing-btn" class="add-button">Add</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="add-custom-container" style="display: none; margin-top: 15px;">
+                    <div class="field-row">
+                        <div class="field-column">
+                            <label for="custom-field">Field name:</label>
+                            <input type="text" id="custom-field" class="dark-input" placeholder="Enter field name">
+                        </div>
+                        <div class="field-column">
+                            <label for="custom-value">Value:</label>
+                            <input type="text" id="custom-value" class="dark-input" placeholder="Enter value">
+                        </div>
+                        <div class="button-column">
+                            <button id="add-custom-field-btn" class="add-button">Add</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="fields-list" style="display: none; margin-top: 20px; padding-top: 15px; border-top: 1px solid #3d3d3d;">
+                <h3 style="margin-bottom: 15px;">Fields to update:</h3>
+                <div id="fields-container"></div>
+            </div>
+            
+            <button id="update-button" class="submit-button" style="width: 100%; margin-top: 20px; display: none;">
+                Update & Copy to Clipboard
+            </button>
+            
+            <button id="back-button" class="secondary-button" style="width: 100%; margin-top: 10px;">
+                Back to Input
+            </button>
+            
+            <div id="update-error" class="error-message"></div>
+            <div id="success-message" class="success-message"></div>
+            
+            <div id="preview-container" style="margin-top: 15px; display: none;">
+                <label>Preview:</label>
+                <div id="preview" class="result"></div>
+            </div>
+        </div>
+
+        <div class="hint">
+            Press <span class="key">Esc</span> to cancel
+        </div>
+    </div>
+
+    <script>
+        const inputData = document.getElementById('input-data');
+        const errorMessage = document.getElementById('error-message');
+        const inputPhase = document.getElementById('input-phase');
+        const updatePhase = document.getElementById('update-phase');
+        const formatIndicator = document.getElementById('format-indicator');
+        const selectExistingBtn = document.getElementById('select-existing-btn');
+        const addCustomBtn = document.getElementById('add-custom-btn');
+        const selectExistingContainer = document.getElementById('select-existing-container');
+        const addCustomContainer = document.getElementById('add-custom-container');
+        const fieldSelect = document.getElementById('field-select');
+        const existingValueInput = document.getElementById('existing-value');
+        const customFieldInput = document.getElementById('custom-field');
+        const customValueInput = document.getElementById('custom-value');
+        const addExistingBtn = document.getElementById('add-existing-btn');
+        const addCustomFieldBtn = document.getElementById('add-custom-field-btn');
+        const fieldsList = document.getElementById('fields-list');
+        const fieldsContainer = document.getElementById('fields-container');
+        const updateButton = document.getElementById('update-button');
+        const backButton = document.getElementById('back-button');
+        const updateError = document.getElementById('update-error');
+        const successMessage = document.getElementById('success-message');
+        const previewContainer = document.getElementById('preview-container');
+        const preview = document.getElementById('preview');
+
+        let parsedData = null;
+        let dataFormat = null;
+        let fieldsToUpdate = [];
+
+        // Parse input when Enter is pressed
+        inputData.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                parseInputData();
+            }
+        });
+
+        // Parse input function
+        async function parseInputData() {
+            const input = inputData.value.trim();
+            if (!input) return;
+
+            try {
+                const result = await window.electronAPI.parseInput(input);
+                
+                if (result.success) {
+                    parsedData = result.data;
+                    dataFormat = result.format;
+                    
+                    formatIndicator.textContent = `Format detected: ${dataFormat.toUpperCase()}`;
+                    fieldSelect.innerHTML = '<option value="">Choose a field...</option>';
+                    result.fields.forEach(field => {
+                        const option = document.createElement('option');
+                        option.value = field;
+                        option.textContent = field;
+                        fieldSelect.appendChild(option);
+                    });
+                    
+                    fieldsToUpdate = [];
+                    fieldsContainer.innerHTML = '';
+                    fieldsList.style.display = 'none';
+                    updateButton.style.display = 'none';
+                    
+                    inputPhase.style.display = 'none';
+                    updatePhase.style.display = 'block';
+                    
+                    updateError.classList.remove('visible');
+                    successMessage.textContent = '';
+                    previewContainer.style.display = 'none';
+                } else {
+                    showError(result.error);
+                }
+            } catch (error) {
+                showError('Invalid format: ' + error.message);
+            }
+        }
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.add('visible');
+        }
+
+        function showUpdateError(message) {
+            updateError.textContent = message;
+            updateError.classList.add('visible');
+        }
+
+        selectExistingBtn.addEventListener('click', () => {
+            selectExistingContainer.style.display = 'block';
+            addCustomContainer.style.display = 'none';
+        });
+
+        addCustomBtn.addEventListener('click', () => {
+            addCustomContainer.style.display = 'block';
+            selectExistingContainer.style.display = 'none';
+        });
+
+        addExistingBtn.addEventListener('click', () => {
+            const field = fieldSelect.value;
+            const value = existingValueInput.value;
+            
+            if (!field) {
+                showUpdateError('Please select a field');
+                return;
+            }
+            
+            addFieldToUpdate(field, value);
+            existingValueInput.value = '';
+        });
+
+        addCustomFieldBtn.addEventListener('click', () => {
+            const field = customFieldInput.value.trim();
+            const value = customValueInput.value;
+            
+            if (!field) {
+                showUpdateError('Please enter a field name');
+                return;
+            }
+            
+            addFieldToUpdate(field, value);
+            customFieldInput.value = '';
+            customValueInput.value = '';
+        });
+
+        function addFieldToUpdate(field, value) {
+            const existingIndex = fieldsToUpdate.findIndex(item => item.field === field);
+            if (existingIndex >= 0) {
+                fieldsToUpdate[existingIndex].value = value;
+            } else {
+                fieldsToUpdate.push({ field, value });
+            }
+            
+            updateFieldsList();
+            updateError.classList.remove('visible');
+        }
+
+        function updateFieldsList() {
+            fieldsContainer.innerHTML = '';
+            
+            fieldsToUpdate.forEach((item, index) => {
+                const fieldItem = document.createElement('div');
+                fieldItem.style.background = '#2d2d2d';
+                fieldItem.style.padding = '10px';
+                fieldItem.style.borderRadius = '6px';
+                fieldItem.style.marginBottom = '10px';
+                fieldItem.style.display = 'flex';
+                fieldItem.style.justifyContent = 'space-between';
+                fieldItem.style.alignItems = 'center';
+                
+                fieldItem.innerHTML = `
+                    <div>
+                        <strong>${item.field}</strong>: ${item.value}
+                    </div>
+                    <button class="remove-button" data-index="${index}" style="background: #ff4444; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;">Remove</button>
+                `;
+                
+                fieldsContainer.appendChild(fieldItem);
+            });
+            
+            document.querySelectorAll('.remove-button').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'));
+                    fieldsToUpdate.splice(index, 1);
+                    updateFieldsList();
+                });
+            });
+            
+            if (fieldsToUpdate.length > 0) {
+                fieldsList.style.display = 'block';
+                updateButton.style.display = 'block';
+            } else {
+                fieldsList.style.display = 'none';
+                updateButton.style.display = 'none';
+            }
+        }
+
+        updateButton.addEventListener('click', async () => {
+            if (fieldsToUpdate.length === 0) {
+                showUpdateError('Please add at least one field to update');
+                return;
+            }
+            
+            try {
+                let result;
+                
+                if (dataFormat === 'json') {
+                    result = await window.electronAPI.updateJsonValues({
+                        jsonData: JSON.stringify(parsedData),
+                        fields: fieldsToUpdate
+                    });
+                } else if (dataFormat === 'csv') {
+                    result = await window.electronAPI.updateCsvValues({
+                        csvData: parsedData,
+                        fields: fieldsToUpdate
+                    });
+                }
+                
+                if (result.success) {
+                    successMessage.textContent = result.message;
+                    
+                    if (result.updatedData && result.updatedData.length > 0) {
+                        if (dataFormat === 'json') {
+                            preview.textContent = JSON.stringify(result.updatedData[0], null, 2);
+                        } else {
+                            preview.textContent = JSON.stringify(result.updatedData[0], null, 2);
+                        }
+                        preview.classList.add('visible');
+                        previewContainer.style.display = 'block';
+                    }
+                    
+                    updateError.classList.remove('visible');
+                    
+                    setTimeout(() => {
+                        window.electronAPI.closeUpdateValues();
+                    }, 2000);
+                } else {
+                    showUpdateError(result.error);
+                }
+            } catch (error) {
+                showUpdateError('Failed to update values: ' + error.message);
+            }
+        });
+
+        backButton.addEventListener('click', () => {
+            window.electronAPI.restoreWindowSize();
+            
+            updatePhase.style.display = 'none';
+            inputPhase.style.display = 'block';
+            inputData.focus();
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            inputData.focus();
+        });
+
+        document.addEventListener('keyup', (event) => {
+            if (event.key === 'Escape') {
+                window.electronAPI.closeUpdateValues();
+            }
+        });
+    </script>
+</body>
+</html>

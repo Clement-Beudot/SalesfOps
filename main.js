@@ -76,6 +76,7 @@ class Application {
         const openMultipleIdsActive = await this.settings.get('openMultipleIdsActive');
         const customSearchActive = await this.settings.get('customSearchActive');
         const extractValueActive = await this.settings.get('extractValueActive');
+        const updateValuesActive = await this.settings.get('updateValuesActive');
     
         if (openSalesforceIdActive) {
             menuItems.push({ 
@@ -114,6 +115,14 @@ class Application {
                 label: 'Extract Json values',
                 click: () => this.commands.extractValue.createWindow(),
                 accelerator: await this.getShortcutLabel('extractValueShortcut')
+            });
+        }
+        
+        if (updateValuesActive) {
+            menuItems.push({
+                label: 'Update Json values',
+                click: () => this.commands.updateValues.createWindow(),
+                accelerator: await this.getShortcutLabel('updateValuesShortcut')
             });
         }
 
