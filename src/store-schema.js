@@ -42,6 +42,22 @@ module.exports = {
         type: 'string',
         default: ''
     },
+    snippets: {
+        type: 'array',
+        default: [],
+        items: {
+            type: 'object',
+            properties: {
+                keyword: { type: 'string' },
+                replacement: { type: 'string' }
+            },
+            required: ['keyword', 'replacement']
+        }
+    },
+    snippetsShortcut: {
+        type: 'string',
+        default: ''
+    },
     extractValueShortcut: {
         type: 'string',
         default: ''
@@ -75,6 +91,10 @@ module.exports = {
         default: true
     },
     updateValuesActive: {
+        type: 'boolean',
+        default: true
+    },
+    snippetsActive: {
         type: 'boolean',
         default: true
     }

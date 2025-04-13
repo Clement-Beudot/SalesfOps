@@ -5,6 +5,7 @@ const SalesforceMultipleIdsCommand = require('./salesforceMultipleIds');
 const CustomSearchCommand = require('./customSearch');
 const ExtractValueCommand = require('./extractValue');
 const UpdateValuesCommand = require('./updateValues');
+const SnippetsCommand = require('./snippets-command');
 
 
 /**
@@ -26,6 +27,7 @@ class CommandManager {
         this.customSearch = new CustomSearchCommand(app, settingsManager);
         this.extractValue = new ExtractValueCommand(app, settingsManager);
         this.updateValues = new UpdateValuesCommand(app, settingsManager);
+        this.snippets = new SnippetsCommand(app, settingsManager);
     }
 
     /**
@@ -40,6 +42,7 @@ class CommandManager {
         this.customSearch.setupIpc(ipcMain);
         this.extractValue.setupIpc(ipcMain);
         this.updateValues.setupIpc(ipcMain);
+        this.snippets.setupIpc(ipcMain);
     }
 
     /**
@@ -49,7 +52,7 @@ class CommandManager {
      */
     async setupShortcuts(globalShortcut) {
         globalShortcut.unregisterAll();
-    
+       
         if (await this.settings.get('openSalesforceIdActive')) {
             const shortcut = await this.settings.get('openSalesforceIdShortcut');
             if (shortcut) {
@@ -96,6 +99,13 @@ class CommandManager {
             const shortcut = await this.settings.get('updateValuesShortcut');
             if (shortcut) {
                 globalShortcut.register(shortcut, () => this.updateValues.createWindow());
+            }
+        }
+        
+        if (await this.settings.get('snippetsActive')) {
+            const shortcut = await this.settings.get('snippetsShortcut');
+            if (shortcut) {
+                globalShortcut.register(shortcut, () => this.snippets.createWindow());
             }
         }
     }

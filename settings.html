@@ -239,6 +239,42 @@
                     Add Custom Search
                 </button>
             </div>
+            <div class="section-divider">
+                <h2>Text Snippets</h2>
+            </div>
+
+            <div class="form-group shortcut-group">
+                <div class="shortcut-header">
+                    <div class="tooltip-container">
+                        <label for="snippetsShortcut">Text Snippets Shortcut</label>
+                        <span class="tooltip-icon">💡</span>
+                        <span class="tooltip-text">
+                            Access your text snippets. Configure frequently used text blocks that can be quickly copied to your clipboard. Choose a keyword and the corresponding text to copy.
+                        </span>
+                    </div>
+                    <div class="active-toggle">
+                        <input type="checkbox" 
+                               id="snippetsActive" 
+                               data-setting>
+                        <label for="snippetsActive">Active</label>
+                    </div>
+                </div>
+                <input type="text" 
+                       id="snippetsShortcut" 
+                       data-setting
+                       placeholder="CommandOrControl+Shift+T">
+                <small class="help-text">
+                    Quickly copy frequently used text snippets to clipboard
+                </small>    
+            </div>
+
+            <div class="snippets-container">
+                <label>Text Snippets</label>
+                <div id="snippets" class="snippets"></div>
+                <button type="button" class="secondary-button mt-4" onclick="addSnippet()">
+                    Add Snippet
+                </button>
+            </div>
 
             <div class="submit-container">
                 <div id="save-message" class="save-message"></div>
@@ -272,6 +308,21 @@
             </button>
         </div>
     </template>
+    <template id="snippetTemplate">
+        <div class="snippet-item">
+            <div class="form-group">
+                <label>Keyword</label>
+                <input type="text" class="snippet-keyword dark-input" required>
+            </div>
+            <div class="form-group">
+                <label>Text to Insert</label>
+                <textarea class="snippet-replacement dark-input" required></textarea>
+            </div>
+            <button type="button" class="remove-button" onclick="removeSnippet(this)">
+                Remove
+            </button>
+        </div>
+    </template>
 
     <script>
         function addCustomSearch() {
@@ -283,6 +334,18 @@
 
         function removeCustomSearch(button) {
             button.closest('.custom-search-item').remove();
+        }
+
+        // Nouvelle fonction pour ajouter un snippet
+        function addSnippet() {
+            const template = document.getElementById('snippetTemplate');
+            const container = document.getElementById('snippets');
+            const clone = template.content.cloneNode(true);
+            container.appendChild(clone);
+        }
+
+        function removeSnippet(button) {
+            button.closest('.snippet-item').remove();
         }
 
         document.addEventListener('DOMContentLoaded', async () => {
@@ -304,6 +367,15 @@
                     lastItem.querySelector('.search-url').value = search.url;
                     lastItem.querySelector('.search-activate').checked = search.activateSearch;
                     lastItem.querySelector('.search-allow-spaces').checked = search.allowSpaces;
+                });
+            }
+
+            if (settings.snippets && Array.isArray(settings.snippets)) {
+                settings.snippets.forEach(snippet => {
+                    addSnippet();
+                    const lastItem = document.querySelector('.snippet-item:last-child');
+                    lastItem.querySelector('.snippet-keyword').value = snippet.keyword;
+                    lastItem.querySelector('.snippet-replacement').value = snippet.replacement;
                 });
             }
         });
@@ -337,6 +409,20 @@
                 });
             });
             settings.customSearches = customSearches;
+
+            const snippets = [];
+            document.querySelectorAll('.snippet-item').forEach(item => {
+                const keyword = item.querySelector('.snippet-keyword').value.trim();
+                const replacement = item.querySelector('.snippet-replacement').value;
+                
+                if (keyword && replacement) {
+                    snippets.push({
+                        keyword,
+                        replacement
+                    });
+                }
+            });
+            settings.snippets = snippets;
             
             await window.electronAPI.saveSettings(settings);
             
