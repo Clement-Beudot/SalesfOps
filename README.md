@@ -89,7 +89,7 @@ npm start
 
 4. Build for production
 ```bash
-npm run dist
+npm run setup-and-build
 ```
 
 The built application will be available in the `dist` folder.
@@ -123,7 +123,7 @@ SalesfOps/
 ### Available Scripts
 
 - `npm start`: Run in development mode
-- `npm run dist`: Build for production
+- `npm run setup-and-build`: Build for production
 - `npm test`: Run tests (when implemented)
 
 ## Contributing
