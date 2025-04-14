@@ -25,6 +25,7 @@
   "license": "MIT",
   "scripts": {
     "start": "electron .",
+    "setup-and-build": "npm install && npm run dist",
     "dist": "electron-builder"
   },
   "devDependencies": {
@@ -37,7 +38,8 @@
     "asarUnpack": [
       "**/*.node",
       "node_modules/electron-store/**/*",
-      "src/store-schema.js"
+      "src/store-schema.js",
+      "node_modules/csv-parse/**/*"
     ],
     "productName": "SalesfOps",
     "directories": {
