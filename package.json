@@ -1,6 +1,6 @@
 {
   "name": "SalesfOps",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A collection of productivity micro-tools for operations teams, with a focus on Salesforce workflows",
   "keywords": [
     "salesforce",
@@ -26,11 +26,16 @@
   "scripts": {
     "start": "electron .",
     "setup-and-build": "npm install && npm run dist",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "test": "jest"
+  },
+  "jest": {
+    "testMatch": ["**/tests/**/*.test.js"]
   },
   "devDependencies": {
     "electron": "^26.6.10",
-    "electron-builder": "^25.1.8"
+    "electron-builder": "^25.1.8",
+    "jest": "^30.3.0"
   },
   "build": {
     "appId": "com.example.SalesfOps",

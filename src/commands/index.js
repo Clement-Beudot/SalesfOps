@@ -6,6 +6,10 @@ const CustomSearchCommand = require('./customSearch');
 const ExtractValueCommand = require('./extractValue');
 const UpdateValuesCommand = require('./updateValues');
 const SnippetsCommand = require('./snippets-command');
+const SfdxOrgsCommand = require('./sfdxOrgs');
+const RemoveDuplicatesCommand = require('./removeDuplicates');
+const DataWorkbenchCommand = require('./dataWorkbench');
+const DocsCommand = require('./docs');
 
 
 /**
@@ -28,6 +32,10 @@ class CommandManager {
         this.extractValue = new ExtractValueCommand(app, settingsManager);
         this.updateValues = new UpdateValuesCommand(app, settingsManager);
         this.snippets = new SnippetsCommand(app, settingsManager);
+        this.sfdxOrgs = new SfdxOrgsCommand(app, settingsManager);
+        this.removeDuplicates = new RemoveDuplicatesCommand(app, settingsManager);
+        this.dataWorkbench = new DataWorkbenchCommand(app, settingsManager);
+        this.docs = new DocsCommand(app, settingsManager);
     }
 
     /**
@@ -43,6 +51,10 @@ class CommandManager {
         this.extractValue.setupIpc(ipcMain);
         this.updateValues.setupIpc(ipcMain);
         this.snippets.setupIpc(ipcMain);
+        this.sfdxOrgs.setupIpc(ipcMain);
+        this.removeDuplicates.setupIpc(ipcMain);
+        this.dataWorkbench.setupIpc(ipcMain);
+        this.docs.setupIpc(ipcMain);
     }
 
     /**
@@ -106,6 +118,20 @@ class CommandManager {
             const shortcut = await this.settings.get('snippetsShortcut');
             if (shortcut) {
                 globalShortcut.register(shortcut, () => this.snippets.createWindow());
+            }
+        }
+
+        if (await this.settings.get('sfdxOrgsActive')) {
+            const shortcut = await this.settings.get('sfdxOrgsShortcut');
+            if (shortcut) {
+                globalShortcut.register(shortcut, () => this.sfdxOrgs.createWindow());
+            }
+        }
+
+        if (await this.settings.get('removeDuplicatesActive')) {
+            const shortcut = await this.settings.get('removeDuplicatesShortcut');
+            if (shortcut) {
+                globalShortcut.register(shortcut, () => this.removeDuplicates.createWindow());
             }
         }
     }

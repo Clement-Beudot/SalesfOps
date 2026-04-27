@@ -97,5 +97,25 @@ module.exports = {
     snippetsActive: {
         type: 'boolean',
         default: true
+    },
+    sfdxOrgsActive: {
+        type: 'boolean',
+        default: true
+    },
+    sfdxOrgsShortcut: {
+        type: 'string',
+        default: ''
+    },
+    removeDuplicatesActive: {
+        type: 'boolean',
+        default: true
+    },
+    removeDuplicatesShortcut: {
+        type: 'string',
+        default: ''
+    },
+    dataWorkbenchActive: {
+        type: 'boolean',
+        default: false
     }
 };

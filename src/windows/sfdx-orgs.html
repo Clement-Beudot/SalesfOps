@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <meta name="color-scheme" content="dark">
+    <title>Salesforce Orgs</title>
+    <link rel="stylesheet" href="../styles/dark-input.css">
+    <link rel="stylesheet" href="../styles/sfdx-orgs.css">
+</head>
+<body>
+    <div class="header">
+        <span class="header-title">Salesforce Orgs</span>
+        <div class="header-actions">
+            <button class="icon-button" id="refresh-btn" title="Refresh org list">↻</button>
+            <button class="icon-button" id="close-btn" title="Close (Esc)">✕</button>
+        </div>
+    </div>
+
+    <div class="org-list" id="org-list">
+        <div class="state-message" id="state-message">Loading orgs...</div>
+    </div>
+
+    <div class="error-banner" id="error-banner"></div>
+
+    <script>
+        const orgList = document.getElementById('org-list');
+        const stateMessage = document.getElementById('state-message');
+        const errorBanner = document.getElementById('error-banner');
+        const refreshBtn = document.getElementById('refresh-btn');
+        const closeBtn = document.getElementById('close-btn');
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            const data = await window.electronAPI.getSfdxOrgs();
+            renderOrgs(data);
+        });
+
+        document.addEventListener('keydown', (e) => {
+            const buttons = getOrgButtons();
+            if (!buttons.length) {
+                if (e.key === 'Escape') window.electronAPI.closeSfdxOrgs();
+                return;
+            }
+
+            const focused = document.activeElement;
+            const currentIndex = buttons.indexOf(focused);
+
+            if (e.key === 'Escape') {
+                window.electronAPI.closeSfdxOrgs();
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                const next = currentIndex < buttons.length - 1 ? currentIndex + 1 : 0;
+                buttons[next].focus();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                const prev = currentIndex > 0 ? currentIndex - 1 : buttons.length - 1;
+                buttons[prev].focus();
+            }
+        });
+
+        refreshBtn.addEventListener('click', async () => {
+            refreshBtn.classList.add('spinning');
+            stateMessage.textContent = 'Refreshing...';
+            stateMessage.classList.remove('error');
+            stateMessage.style.display = 'block';
+            clearOrgs();
+            const data = await window.electronAPI.refreshSfdxOrgs();
+            refreshBtn.classList.remove('spinning');
+            renderOrgs(data);
+        });
+
+        closeBtn.addEventListener('click', () => window.electronAPI.closeSfdxOrgs());
+
+        function getOrgButtons() {
+            return Array.from(orgList.querySelectorAll('.org-button'));
+        }
+
+        function clearOrgs() {
+            getOrgButtons().forEach(b => b.remove());
+        }
+
+        function getStatusClass(status) {
+            if (!status) return 'unknown';
+            const s = status.toLowerCase();
+            if (s === 'connected' || s === 'active') return 'connected';
+            if (s === 'expired') return 'expired';
+            if (s === 'disconnected') return 'disconnected';
+            return 'unknown';
+        }
+
+        function isConnected(org) {
+            const s = (org.connectedStatus || '').toLowerCase();
+            return s === 'connected' || s === 'active';
+        }
+
+        function sortOrgs(orgs) {
+            return [...orgs].sort((a, b) => {
+                const aConn = isConnected(a);
+                const bConn = isConnected(b);
+                if (a.isDevHub && aConn && !(b.isDevHub && bConn)) return -1;
+                if (b.isDevHub && bConn && !(a.isDevHub && aConn)) return 1;
+                return bConn - aConn;
+            });
+        }
+
+        function renderOrgs(data) {
+            clearOrgs();
+
+            if (data.error) {
+                stateMessage.textContent = data.error;
+                stateMessage.classList.add('error');
+                stateMessage.style.display = 'block';
+                return;
+            }
+
+            if (!data.orgs || data.orgs.length === 0) {
+                stateMessage.textContent = 'No orgs found. Run "sf org login" to connect one.';
+                stateMessage.style.display = 'block';
+                return;
+            }
+
+            stateMessage.style.display = 'none';
+
+            const sorted = sortOrgs(data.orgs);
+
+            sorted.forEach(org => {
+                const identifier = org.alias || org.username;
+                const displayName = org.alias || org.username;
+                const showUsername = org.alias ? org.username : '';
+
+                const btn = document.createElement('button');
+                btn.className = 'org-button';
+                btn.innerHTML = `
+                    <div class="org-dot ${getStatusClass(org.connectedStatus)}"></div>
+                    <div class="org-info">
+                        <div class="org-name">${displayName}</div>
+                        ${showUsername ? `<div class="org-username">${showUsername}</div>` : ''}
+                    </div>
+                    <div class="org-badges">
+                        ${org.isDevHub ? '<span class="badge badge-devhub">DevHub</span>' : ''}
+                        ${org.type === 'scratch' ? '<span class="badge badge-scratch">Scratch</span>' : ''}
+                        ${org.isSandbox ? '<span class="badge badge-sandbox">Sandbox</span>' : ''}
+                        ${org.isDefault ? '<span class="badge badge-default">Default</span>' : ''}
+                    </div>
+                `;
+
+                btn.addEventListener('click', async () => {
+                    btn.classList.add('opening');
+                    errorBanner.classList.remove('visible');
+                    const result = await window.electronAPI.openSfdxOrg(identifier);
+                    btn.classList.remove('opening');
+                    if (result.success) {
+                        window.electronAPI.closeSfdxOrgs();
+                    } else {
+                        errorBanner.textContent = result.error;
+                        errorBanner.classList.add('visible');
+                        btn.focus();
+                    }
+                });
+
+                orgList.appendChild(btn);
+            });
+
+            getOrgButtons()[0]?.focus();
+        }
+    </script>
+</body>
+</html>

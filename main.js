@@ -23,22 +23,6 @@ class Application {
         await this.commands.setupShortcuts(globalShortcut);
         this.setupAppEvents();
 
-        const updateInfo = await this.checkForUpdates();
-        if (updateInfo.hasUpdate) {
-            const { dialog } = require('electron');
-            const response = await dialog.showMessageBox({
-                type: 'info',
-                buttons: ['Download', 'Later'],
-                title: 'Update available',
-                message: `A new version (${updateInfo.version}) is available !`,
-                detail: 'Do you want to download the new version ?'
-            });
-    
-            if (response.response === 0) {
-                shell.openExternal(updateInfo.releaseUrl);
-            }
-        }
-        
         ipcMain.on('save-settings', async () => {
             await this.updateTrayMenu();
         });
@@ -64,104 +48,78 @@ class Application {
         const version = app.getVersion();
         const menuItems = [];
         const updateInfo = await this.checkForUpdates();
-    
-        menuItems.push(
-            { label: 'Actions', enabled: false },
-            { type: 'separator' }
-        );
-    
-        const openSalesforceIdActive = await this.settings.get('openSalesforceIdActive');
-        const concatenateStringActive = await this.settings.get('concatenateStringActive');
-        const searchInSalesforceActive = await this.settings.get('searchInSalesforceActive');
-        const openMultipleIdsActive = await this.settings.get('openMultipleIdsActive');
-        const customSearchActive = await this.settings.get('customSearchActive');
-        const extractValueActive = await this.settings.get('extractValueActive');
-        const updateValuesActive = await this.settings.get('updateValuesActive');
-        const snippetsActive = await this.settings.get('snippetsActive');
-    
-        if (openSalesforceIdActive) {
-            menuItems.push({ 
-                label: 'Open Salesforce ID',
-                click: () => this.commands.salesforceId.createWindow(),
-                accelerator: await this.getShortcutLabel('openSalesforceIdShortcut')
-            });
+
+        // ── Salesforce ────────────────────────────────────────────────────────
+        const sfItems = [];
+        if (await this.settings.get('openSalesforceIdActive'))
+            sfItems.push({ label: 'Open Salesforce ID', click: () => this.commands.salesforceId.createWindow(), accelerator: await this.getShortcutLabel('openSalesforceIdShortcut') });
+        if (await this.settings.get('openMultipleIdsActive'))
+            sfItems.push({ label: 'Open Multiple IDs', click: () => this.commands.salesforceMultipleIds.createWindow(), accelerator: await this.getShortcutLabel('openMultipleIdsShortcut') });
+        if (await this.settings.get('searchInSalesforceActive'))
+            sfItems.push({ label: 'Search in Salesforce', click: () => this.commands.salesforceSearch.createWindow(), accelerator: await this.getShortcutLabel('searchInSalesforceShortcut') });
+        if (await this.settings.get('sfdxOrgsActive'))
+            sfItems.push({ label: 'Open Salesforce Org', click: () => this.commands.sfdxOrgs.createWindow(), accelerator: await this.getShortcutLabel('sfdxOrgsShortcut') });
+
+        if (sfItems.length > 0)
+            menuItems.push({ label: 'Salesforce', enabled: false }, ...sfItems);
+
+        // ── Data ──────────────────────────────────────────────────────────────
+        const dataItems = [];
+        if (await this.settings.get('concatenateStringActive'))
+            dataItems.push({ label: 'Concatenate Strings', click: () => this.commands.stringConcatenator.createWindow(), accelerator: await this.getShortcutLabel('concatenateStringShortcut') });
+        if (await this.settings.get('extractValueActive'))
+            dataItems.push({ label: 'Extract JSON Values', click: () => this.commands.extractValue.createWindow(), accelerator: await this.getShortcutLabel('extractValueShortcut') });
+        if (await this.settings.get('updateValuesActive'))
+            dataItems.push({ label: 'Update JSON Values', click: () => this.commands.updateValues.createWindow(), accelerator: await this.getShortcutLabel('updateValuesShortcut') });
+        if (await this.settings.get('removeDuplicatesActive'))
+            dataItems.push({ label: 'Remove Duplicates', click: () => this.commands.removeDuplicates.createWindow(), accelerator: await this.getShortcutLabel('removeDuplicatesShortcut') });
+
+        if (dataItems.length > 0) {
+            if (menuItems.length > 0) menuItems.push({ type: 'separator' });
+            menuItems.push({ label: 'Data', enabled: false }, ...dataItems);
         }
-    
-        if (concatenateStringActive) {
-            menuItems.push({
-                label: 'Concatenate Strings',
-                click: () => this.commands.stringConcatenator.createWindow(),
-                accelerator: await this.getShortcutLabel('concatenateStringShortcut')
-            });
+
+        // ── Other Tools ───────────────────────────────────────────────────────
+        const otherItems = [];
+        if (await this.settings.get('customSearchActive'))
+            otherItems.push({ label: 'Custom Search', click: () => this.commands.customSearch.createWindow(), accelerator: await this.getShortcutLabel('customSearchShortcut') });
+        if (await this.settings.get('snippetsActive'))
+            otherItems.push({ label: 'Insert Text Snippet', click: () => this.commands.snippets.createWindow(), accelerator: await this.getShortcutLabel('snippetsShortcut') });
+
+        if (otherItems.length > 0) {
+            if (menuItems.length > 0) menuItems.push({ type: 'separator' });
+            menuItems.push({ label: 'Other Tools', enabled: false }, ...otherItems);
         }
-    
-        if (searchInSalesforceActive) {
+
+        // ── Data Workbench ────────────────────────────────────────────────────
+        const dataWorkbenchActive = await this.settings.get('dataWorkbenchActive');
+        if (dataWorkbenchActive) {
+            if (menuItems.length > 0) menuItems.push({ type: 'separator' });
             menuItems.push({
-                label: 'Search in Salesforce',
-                click: () => this.commands.salesforceSearch.createWindow(),
-                accelerator: await this.getShortcutLabel('searchInSalesforceShortcut')
-            });
-        }
-    
-        if (openMultipleIdsActive) {
-            menuItems.push({
-                label: 'Open Multiple IDs',
-                click: () => this.commands.salesforceMultipleIds.createWindow(),
-                accelerator: await this.getShortcutLabel('openMultipleIdsShortcut')
-            });
-        }
-    
-        if (extractValueActive) {
-            menuItems.push({
-                label: 'Extract Json values',
-                click: () => this.commands.extractValue.createWindow(),
-                accelerator: await this.getShortcutLabel('extractValueShortcut')
-            });
-        }
-        
-        if (updateValuesActive) {
-            menuItems.push({
-                label: 'Update Json values',
-                click: () => this.commands.updateValues.createWindow(),
-                accelerator: await this.getShortcutLabel('updateValuesShortcut')
+                label: 'Data Workbench (beta)',
+                click: () => this.commands.dataWorkbench.createWindow()
             });
         }
 
-        if (customSearchActive) {
-            menuItems.push({
-                label: 'Select custom search',
-                click: () => this.commands.customSearch.createWindow(),
-                accelerator: await this.getShortcutLabel('customSearchShortcut')
-            });
-        }
-
-        if (snippetsActive) {
-            menuItems.push({
-                label: 'Insert Text Snippet',
-                click: () => this.commands.snippets.createWindow(),
-                accelerator: await this.getShortcutLabel('snippetsShortcut')
-            });
-        }
-    
         menuItems.push(
             { type: 'separator' },
             { label: `SalesfOps - Version ${version}`, enabled: false }
         );
-    
+
         if (updateInfo.hasUpdate) {
             menuItems.push(
-                { label: `New version available: ${updateInfo.version}`, enabled: false },
-                { 
+                { label: `⬆ Update available: ${updateInfo.version}`, enabled: false },
+                {
                     label: 'Download update',
                     click: () => shell.openExternal(updateInfo.releaseUrl)
                 }
             );
-        } else {
-            menuItems.push({ label: 'Application is up to date', enabled: false });
         }
     
         menuItems.push(
-            { label: 'Settings', click: () => this.openSettingsWindow() },
+            { type: 'separator' },
+            { label: '⚙︎  Settings', click: () => this.openSettingsWindow() },
+            { label: '☰  Documentation', click: () => this.commands.docs.createWindow() },
             { type: 'separator' },
             { 
                 label: 'Quit', 

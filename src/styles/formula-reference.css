@@ -1,0 +1,22 @@
+/* Formula Reference window — overrides on top of doc-viewer.css */
+
+.sidebar { width: 190px; }
+#search { width: 180px; }
+.content { padding: 24px 32px 48px; }
+
+/* Indented monospace function names in the sidebar */
+.toc-item.toc-fn {
+    padding-left: 24px; font-size: 11px;
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+}
+
+/* All h3s are function signatures here */
+.md h3 { margin: 20px 0 6px; font-family: 'SF Mono', 'Consolas', 'Monaco', monospace; }
+
+/* Slightly more generous vertical spacing for a single-topic reference */
+.md h2 { margin: 32px 0 12px; }
+.md h1 { margin-bottom: 8px; scroll-margin-top: 0; }
+.md p { margin: 6px 0; }
+.md hr { margin: 24px 0; }
+.md h4 { scroll-margin-top: 0; }
+.md h5 { scroll-margin-top: 0; }

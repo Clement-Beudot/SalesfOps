@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <meta name="color-scheme" content="dark">
+    <title>Formula Reference</title>
+    <link rel="stylesheet" href="../styles/doc-viewer.css">
+    <link rel="stylesheet" href="../styles/formula-reference.css">
+</head>
+<body>
+<div class="header">
+    <span class="header-title">Formula Reference</span>
+    <div class="search-wrap">
+        <input id="search" type="text" placeholder="Search functions…" autocomplete="off" spellcheck="false">
+    </div>
+</div>
+<div class="body">
+    <nav class="sidebar" id="sidebar"></nav>
+    <div class="content" id="content"><div class="md" id="md"></div></div>
+</div>
+
+<script src="./markdown-parser.js"></script>
+<script>
+// ── Boot ───────────────────────────────────────────────────────────────────
+
+(async function () {
+    const md = await window.electronAPI.getFormulaReferenceMd();
+    const mdEl = document.getElementById('md');
+    mdEl.innerHTML = parseMarkdown(md);
+
+    buildSidebar();
+    initSearch();
+    initScrollSpy();
+})();
+
+// ── Sidebar ────────────────────────────────────────────────────────────────
+
+function buildSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const content = document.getElementById('content');
+
+    document.querySelectorAll('#md h2, #md h3').forEach(el => {
+        const isH3 = el.tagName === 'H3';
+
+        if (!isH3) {
+            const grp = document.createElement('div');
+            grp.className = 'toc-group';
+            grp.textContent = el.textContent;
+            sidebar.appendChild(grp);
+        }
+
+        const item = document.createElement('div');
+        item.className = 'toc-item' + (isH3 ? ' toc-fn' : '');
+        item.dataset.target = el.id;
+        item.textContent = el.textContent;
+        item.addEventListener('click', () => {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        sidebar.appendChild(item);
+    });
+}
+
+// ── Scroll spy ────────────────────────────────────────────────────────────
+
+function initScrollSpy() {
+    const content = document.getElementById('content');
+    const anchors = Array.from(document.querySelectorAll('#md h2, #md h3'));
+
+    content.addEventListener('scroll', () => {
+        const top = content.scrollTop + 80;
+        let active = anchors[0]?.id;
+        for (const el of anchors) { if (el.offsetTop <= top) active = el.id; }
+        document.querySelectorAll('.toc-item').forEach(item => {
+            item.classList.toggle('active', item.dataset.target === active);
+        });
+    });
+}
+
+// ── Search ────────────────────────────────────────────────────────────────
+
+function initSearch() {
+    document.getElementById('search').addEventListener('input', function () {
+        const q = this.value.trim().toLowerCase();
+        restoreAll();
+        if (!q) return;
+        filterContent(q);
+    });
+}
+
+function allH3Blocks() {
+    const h3s = Array.from(document.querySelectorAll('#md h3'));
+    return h3s.map(h3 => {
+        const block = [h3];
+        let next = h3.nextElementSibling;
+        while (next && next.tagName !== 'H3' && next.tagName !== 'H2' && next.tagName !== 'HR') {
+            block.push(next);
+            next = next.nextElementSibling;
+        }
+        return block;
+    });
+}
+
+function restoreAll() {
+    document.querySelectorAll('[data-orig]').forEach(el => {
+        el.innerHTML = el.dataset.orig;
+        delete el.dataset.orig;
+    });
+    document.querySelectorAll('#md > *').forEach(el => el.style.display = '');
+    document.querySelector('.no-results')?.remove();
+}
+
+function filterContent(q) {
+    const blocks = allH3Blocks();
+    // Hide everything that isn't part of an h3 block (h1, h2 headings, hrs) — keep them if a match found nearby
+    document.querySelectorAll('#md > *').forEach(el => el.style.display = 'none');
+
+    let anyVisible = false;
+    blocks.forEach(block => {
+        const text = block.map(el => el.textContent).join(' ').toLowerCase();
+        if (text.includes(q)) {
+            block.forEach(el => { el.style.display = ''; });
+            highlightBlock(block, q);
+            anyVisible = true;
+        }
+    });
+
+    if (!anyVisible) {
+        const msg = document.createElement('div');
+        msg.className = 'no-results';
+        msg.textContent = `No results for "${document.getElementById('search').value}"`;
+        document.getElementById('content').appendChild(msg);
+    }
+}
+
+function highlightBlock(els, q) {
+    const re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+    els.forEach(el => {
+        if (el.tagName === 'PRE') return;
+        if (!el.dataset.orig) el.dataset.orig = el.innerHTML;
+        el.innerHTML = el.innerHTML.replace(re, '<mark>$1</mark>');
+    });
+}
+</script>
+</body>
+</html>

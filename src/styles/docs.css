@@ -1,0 +1,19 @@
+/* Documentation window — overrides on top of doc-viewer.css */
+
+.sidebar { width: 210px; }
+#search { width: 200px; }
+.content { padding: 24px 36px 48px; }
+
+.toc-group:first-child { padding-top: 6px; }
+.toc-item.toc-sub {
+    padding-left: 24px; font-size: 11px; color: #666;
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+}
+.toc-item.toc-sub:hover { color: #aaa; }
+.toc-item.toc-sub.active { color: #d070d0; }
+
+.doc-section { margin-bottom: 48px; }
+.doc-section + .doc-section { border-top: 1px solid #222; padding-top: 32px; }
+
+/* h3s inside formula sections are function signatures */
+.md.formula h3 { font-family: 'SF Mono', 'Consolas', 'Monaco', monospace; }

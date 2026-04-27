@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <meta name="color-scheme" content="dark">
+    <title>Data Workbench</title>
+    <link rel="stylesheet" href="../styles/dark-input.css">
+    <link rel="stylesheet" href="../styles/data-workbench.css">
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="header-left">
+            <span class="header-title">Data Workbench</span><span class="beta-badge" id="workbench-version-badge">BETA</span>
+        </div>
+        <div class="header-right" style="display:flex;gap:8px;">
+            <button class="btn-primary secondary" id="btn-load-model">Load</button>
+            <button class="btn-primary secondary" id="btn-save-model" style="display:none;">Save</button>
+            <button class="btn-primary secondary" id="btn-schema" style="display:none;">Schema</button>
+            <button class="btn-primary secondary" id="btn-color-rules" style="display:none;" title="Manage card color rules">⬤ Colors</button>
+            <button class="btn-primary secondary" id="btn-result" style="display:none;">+ Add Result</button>
+            <button class="btn-primary secondary" id="btn-add">+ Add Table</button>
+        </div>
+    </div>
+
+    <!-- Add Table Panel -->
+    <div class="add-panel" id="add-panel">
+        <div class="mode-tabs">
+            <button class="mode-tab active" data-mode="paste">Paste from spreadsheet</button>
+            <button class="mode-tab" data-mode="soql">SOQL Query</button>
+            <button class="mode-tab" data-mode="file">Import CSV</button>
+        </div>
+
+        <!-- Paste view -->
+        <div class="mode-view active" id="view-paste">
+            <!-- Shown only in edit mode (pasteEditingEntry set) -->
+            <input type="file" id="paste-file-input" accept=".csv,.tsv,.txt" style="display:none">
+            <div class="paste-edit-file hidden" id="paste-edit-file">
+                <div class="card-drop-zone" id="paste-edit-drop-zone">
+                    <span class="file-drop-icon">📂</span>
+                    <span class="file-drop-label">Drop a CSV or TSV file here</span>
+                    <span class="file-drop-sub">or click to browse</span>
+                </div>
+                <div class="file-info hidden" id="paste-edit-file-info">
+                    <span class="file-info-name" id="paste-edit-file-name"></span>
+                    <span class="file-info-meta" id="paste-edit-file-meta"></span>
+                    <button class="file-info-clear" id="paste-edit-file-clear" title="Clear">✕</button>
+                </div>
+                <div class="card-edit-divider">— or paste / edit manually —</div>
+            </div>
+            <textarea class="add-textarea" id="paste-input"
+                placeholder="Paste your spreadsheet data here (Tab-separated columns, e.g. copied from Excel or Google Sheets)..."></textarea>
+            <div class="panel-footer">
+                <input type="text" id="paste-description" class="desc-input" placeholder="Description (optional)…">
+                <span class="panel-error" id="paste-error"></span>
+                <button class="btn-primary" id="btn-import">Import Table</button>
+            </div>
+        </div>
+
+        <!-- File import view -->
+        <div class="mode-view" id="view-file">
+            <input type="file" id="file-input" accept=".csv" style="display:none">
+            <div class="file-drop-zone" id="file-drop-zone">
+                <div class="file-drop-icon">↓</div>
+                <div class="file-drop-label">Drop a CSV file here</div>
+                <div class="file-drop-sub">or click to browse</div>
+            </div>
+            <div class="file-info hidden" id="file-info">
+                <span class="file-info-name" id="file-info-name"></span>
+                <span class="file-info-meta" id="file-info-meta"></span>
+                <button class="file-info-clear" id="file-info-clear" title="Clear">✕</button>
+            </div>
+            <div class="panel-footer">
+                <input type="text" id="file-description" class="desc-input" placeholder="Description (optional)…">
+                <span class="panel-error" id="file-error"></span>
+                <button class="btn-primary" id="btn-import-file" disabled>Import Table</button>
+            </div>
+        </div>
+
+        <!-- SOQL view -->
+        <div class="mode-view" id="view-soql">
+            <textarea class="add-textarea" id="soql-input"
+                placeholder="SELECT Id, Name, AccountId&#10;FROM Contact&#10;LIMIT 200"></textarea>
+            <div class="soql-controls">
+                <select class="org-select" id="org-select">
+                    <option value="">Loading orgs...</option>
+                </select>
+                <button class="btn-icon" id="btn-refresh-orgs" title="Refresh org list">↻</button>
+            </div>
+            <div class="bindings-hint" id="bindings-hint"></div>
+            <div class="panel-footer">
+                <input type="text" id="soql-description" class="desc-input" placeholder="Description (optional)…">
+                <span class="panel-error" id="soql-error"></span>
+                <button class="btn-primary" id="btn-run-query">Run Query</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Result Panel -->
+    <div class="add-panel" id="result-panel">
+        <div class="op-tiles">
+            <button class="op-tile active" data-op="enrich">
+                <span class="op-name">Enrich</span>
+                <span class="op-desc">Add columns from B into A where keys match</span>
+            </button>
+            <button class="op-tile" data-op="missing">
+                <span class="op-name">Missing</span>
+                <span class="op-desc">Rows in A with no match in B</span>
+            </button>
+            <button class="op-tile" data-op="filter">
+                <span class="op-name">Filter</span>
+                <span class="op-desc">Rows in A that have a match in B</span>
+            </button>
+            <button class="op-tile" data-op="stack">
+                <span class="op-name">Stack</span>
+                <span class="op-desc">Append B below A (same columns)</span>
+            </button>
+            <button class="op-tile" data-op="transform">
+                <span class="op-name">Transform</span>
+                <span class="op-desc">Keep/add columns with mapping rules</span>
+            </button>
+            <button class="op-tile" data-op="split">
+                <span class="op-name">Split</span>
+                <span class="op-desc">Split one source into N tables by condition</span>
+            </button>
+        </div>
+        <div id="result-config"></div>
+        <div class="panel-footer">
+            <input type="text" id="result-description" class="desc-input" placeholder="Description (optional — visible in schema tooltip)…">
+            <span class="panel-error" id="result-error"></span>
+            <button class="btn-danger" id="btn-delete-result" style="display:none">✕ Delete Recipe</button>
+            <button class="btn-primary" id="btn-create-result">Create Result</button>
+        </div>
+    </div>
+    <div class="schema-tooltip hidden" id="schema-tooltip"></div>
+
+    <!-- Tables content area -->
+    <div class="content" id="content">
+        <div class="empty-state" id="empty-state">
+            No tables yet.<br>
+            Click <strong>+ Add Table</strong> to paste data or run a SOQL query.
+        </div>
+    </div>
+
+    <!-- Schema overlay -->
+    <div class="schema-overlay hidden" id="schema-overlay">
+        <div class="schema-bar">
+            <span class="schema-bar-title">Schema</span>
+            <div class="schema-legend">
+                <span class="schema-legend-item"><span class="schema-legend-dot paste"></span>Paste</span>
+                <span class="schema-legend-item"><span class="schema-legend-dot soql"></span>SOQL</span>
+                <span class="schema-legend-item"><span class="schema-legend-dot res"></span>Result</span>
+                <span class="schema-legend-item" style="margin-left:8px;border-left:1px solid #2a2a2a;padding-left:14px;">
+                    <svg width="22" height="10" style="flex-shrink:0"><line x1="0" y1="5" x2="22" y2="5" stroke="#555" stroke-width="1.5" stroke-dasharray="4 3"/></svg>
+                    SOQL binding
+                </span>
+            </div>
+        </div>
+        <div class="schema-main">
+            <div class="schema-canvas" id="schema-canvas"></div>
+            <div class="schema-preview hidden" id="schema-preview">
+                <div class="schema-preview-resize" id="schema-preview-resize"></div>
+                <div class="schema-preview-bar">
+                    <span class="schema-preview-title" id="schema-preview-title" title="Double-click to rename"></span>
+                    <span class="schema-preview-renames hidden" id="schema-preview-renames">⇄</span>
+                    <span class="schema-preview-badge" id="schema-preview-badge"></span>
+                    <span class="schema-preview-meta" id="schema-preview-meta"></span>
+                    <button class="btn-danger schema-preview-delete-btn" id="schema-preview-delete" title="Delete this table">✕ Delete</button>
+                    <button class="btn-schema-close" id="schema-preview-close" title="Close preview">✕</button>
+                </div>
+                <div class="schema-preview-error panel-error" id="schema-preview-error"></div>
+                <div class="schema-preview-desc" id="schema-preview-desc" contenteditable="true" data-placeholder="Add a description…"></div>
+                <div class="schema-preview-body" id="schema-preview-body"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Color Rules Panel -->
+    <div class="color-rules-panel hidden" id="color-rules-panel">
+        <div class="color-rules-panel-header" id="color-rules-panel-header">
+            <span>⬤ Color Rules</span>
+            <button class="color-rules-close" id="color-rules-close" title="Close">✕</button>
+        </div>
+        <div class="color-rules-form">
+            <div class="color-rules-form-row">
+                <label class="color-rules-label">Table</label>
+                <select id="color-rule-table" class="color-rules-select"></select>
+            </div>
+            <div class="color-rules-form-row">
+                <label class="color-rules-label">Condition</label>
+                <div class="color-rule-cond-group">
+                    <label class="color-rule-cond-opt"><input type="radio" name="color-rule-cond" value="has_records" checked> Has records</label>
+                    <label class="color-rule-cond-opt"><input type="radio" name="color-rule-cond" value="no_records"> No records</label>
+                </div>
+            </div>
+            <div class="color-rules-form-row">
+                <label class="color-rules-label">Color</label>
+                <div class="color-rule-swatches" id="color-rule-swatches">
+                    <button class="color-swatch" data-color="#ef4444" style="background:#ef4444;" title="Red"></button>
+                    <button class="color-swatch" data-color="#f97316" style="background:#f97316;" title="Orange"></button>
+                    <button class="color-swatch" data-color="#fbbf24" style="background:#fbbf24;" title="Yellow"></button>
+                    <button class="color-swatch" data-color="#22c55e" style="background:#22c55e;" title="Green"></button>
+                    <button class="color-swatch" data-color="#3b82f6" style="background:#3b82f6;" title="Blue"></button>
+                    <button class="color-swatch" data-color="#a855f7" style="background:#a855f7;" title="Purple"></button>
+                </div>
+            </div>
+            <button class="btn-primary" id="color-rule-add" disabled>+ Add Rule</button>
+        </div>
+        <div class="color-rules-list" id="color-rules-list"></div>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <!-- Scripts: load order matters (toast → state → logic → table → recipe → schema → color-rules → main) -->
+    <script src="./data-workbench/toast.js"></script>
+    <script src="./data-workbench/logic.js"></script>
+    <script src="./data-workbench/state.js"></script>
+    <script src="./data-workbench/table.js"></script>
+    <script src="./data-workbench/recipe.js"></script>
+    <script src="./data-workbench/schema.js"></script>
+    <script src="./data-workbench/color-rules.js"></script>
+    <script src="./data-workbench/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <meta name="color-scheme" content="dark">
+    <title>Documentation</title>
+    <link rel="stylesheet" href="../styles/doc-viewer.css">
+    <link rel="stylesheet" href="../styles/docs.css">
+</head>
+<body>
+<div class="header">
+    <span class="header-title">Documentation</span>
+    <div class="search-wrap">
+        <input id="search" type="text" placeholder="Search…" autocomplete="off" spellcheck="false">
+    </div>
+</div>
+<div class="body">
+    <nav class="sidebar" id="sidebar"></nav>
+    <div class="content" id="content"></div>
+</div>
+
+<script src="./markdown-parser.js"></script>
+<script>
+// ── Render a doc section ───────────────────────────────────────────────────
+
+function renderSection(container, mdText, extraClass = '') {
+    const div = document.createElement('div');
+    div.className = 'doc-section';
+    const md = document.createElement('div');
+    md.className = 'md' + (extraClass ? ' ' + extraClass : '');
+    md.innerHTML = parseMarkdown(mdText);
+    div.appendChild(md);
+    container.appendChild(div);
+    return div;
+}
+
+// ── Build sidebar ──────────────────────────────────────────────────────────
+
+function buildSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const content = document.getElementById('content');
+
+    document.querySelectorAll('#content h1, #content h2, #content h3').forEach(el => {
+        if (el.tagName === 'H1') {
+            const grp = document.createElement('div');
+            grp.className = 'toc-group';
+            grp.textContent = el.textContent;
+            sidebar.appendChild(grp);
+        } else {
+            const item = document.createElement('div');
+            const isSub = el.tagName === 'H3';
+            item.className = 'toc-item' + (isSub ? ' toc-sub' : '');
+            item.dataset.target = el.id;
+            item.textContent = isSub ? el.textContent.replace(/\(.*$/, '()') : el.textContent;
+            item.title = el.textContent;
+            item.addEventListener('click', () => {
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+            sidebar.appendChild(item);
+        }
+    });
+}
+
+// ── Scroll spy ────────────────────────────────────────────────────────────
+
+function initScrollSpy() {
+    const content = document.getElementById('content');
+    const anchors = Array.from(document.querySelectorAll('#content h1, #content h2, #content h3'));
+
+    content.addEventListener('scroll', () => {
+        const top = content.scrollTop + 80;
+        let active = anchors[0]?.id;
+        for (const el of anchors) { if (el.offsetTop <= top) active = el.id; }
+        document.querySelectorAll('.toc-item').forEach(item => {
+            item.classList.toggle('active', item.dataset.target === active);
+        });
+    });
+}
+
+// ── Search ────────────────────────────────────────────────────────────────
+
+function initSearch() {
+    document.getElementById('search').addEventListener('input', function () {
+        const q = this.value.trim().toLowerCase();
+        restoreAll();
+        if (!q) return;
+        filterContent(q);
+    });
+}
+
+function allH3Blocks() {
+    return Array.from(document.querySelectorAll('#content h3')).map(h3 => {
+        const block = [h3];
+        let next = h3.nextElementSibling;
+        while (next && !['H1','H2','H3','HR'].includes(next.tagName)) {
+            block.push(next);
+            next = next.nextElementSibling;
+        }
+        return block;
+    });
+}
+
+function restoreAll() {
+    document.querySelectorAll('[data-orig]').forEach(el => {
+        el.innerHTML = el.dataset.orig;
+        delete el.dataset.orig;
+    });
+    document.querySelectorAll('.doc-section').forEach(s => s.style.display = '');
+    document.querySelectorAll('.md > *').forEach(el => el.style.display = '');
+    document.querySelector('.no-results')?.remove();
+}
+
+function filterContent(q) {
+    const blocks = allH3Blocks();
+    // hide all md children initially
+    document.querySelectorAll('.md > *').forEach(el => el.style.display = 'none');
+
+    let anyVisible = false;
+    blocks.forEach(block => {
+        if (block.map(e => e.textContent).join(' ').toLowerCase().includes(q)) {
+            block.forEach(el => el.style.display = '');
+            highlightBlock(block, q);
+            anyVisible = true;
+        }
+    });
+
+    // Show doc-section containers that have visible content, hide empty ones
+    document.querySelectorAll('.doc-section').forEach(sec => {
+        const hasVisible = Array.from(sec.querySelectorAll('.md > *')).some(el => el.style.display !== 'none');
+        sec.style.display = hasVisible ? '' : 'none';
+    });
+
+    if (!anyVisible) {
+        const msg = document.createElement('div');
+        msg.className = 'no-results';
+        msg.textContent = `No results for "${document.getElementById('search').value}"`;
+        document.getElementById('content').appendChild(msg);
+    }
+}
+
+function highlightBlock(els, q) {
+    const re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+    els.forEach(el => {
+        if (el.tagName === 'PRE') return;
+        if (!el.dataset.orig) el.dataset.orig = el.innerHTML;
+        el.innerHTML = el.innerHTML.replace(re, '<mark>$1</mark>');
+    });
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+
+(async function () {
+    const content = document.getElementById('content');
+    const api = window.electronAPI;
+
+    const [commandsMd, workbenchActive] = await Promise.all([
+        api.getCommandsMd(),
+        api.getDataWorkbenchActive(),
+    ]);
+
+    renderSection(content, commandsMd);
+
+    if (workbenchActive) {
+        const [dwMd, formulaMd] = await Promise.all([
+            api.getDataWorkbenchDocMd(),
+            api.getFormulaReferenceMd(),
+        ]);
+        renderSection(content, dwMd);
+        renderSection(content, formulaMd, 'formula');
+    }
+
+    buildSidebar();
+    initScrollSpy();
+    initSearch();
+})();
+</script>
+</body>
+</html>

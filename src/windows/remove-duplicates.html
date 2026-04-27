@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <meta name="color-scheme" content="dark">
+    <title>Remove Duplicates</title>
+    <link rel="stylesheet" href="../styles/dark-input.css">
+    <style>
+        .modal-window { justify-content: flex-start; padding: 16px; overflow-y: auto; }
+        .textarea-container { margin-bottom: 8px; }
+        .dark-textarea { height: 110px; width: 448px; }
+        .hint { position: static; margin-top: 6px; }
+        #results-section { width: 448px; margin-top: 12px; }
+        .duplicate-count { font-size: 13px; color: #ccc; margin-bottom: 10px; text-align: center; }
+        .duplicate-count.has-duplicates { color: #ff9944; }
+        .duplicate-count.no-duplicates { color: #4CAF50; }
+    </style>
+</head>
+<body class="modal-window">
+    <div class="textarea-container">
+        <textarea
+            id="string-input"
+            class="dark-textarea"
+            placeholder="Enter strings (separated by spaces or new lines)"
+            autofocus
+        ></textarea>
+        <div class="hint">
+            Press <span class="key">↵</span> to analyse or <span class="key">Esc</span> to cancel
+        </div>
+    </div>
+
+    <div id="results-section" style="display:none">
+        <div id="duplicate-count" class="duplicate-count"></div>
+
+        <details id="unique-section">
+            <summary>
+                <div class="summary-left">
+                    <span class="toggle-arrow">▶</span>
+                    <span id="unique-label"></span>
+                </div>
+                <button class="copy-btn" id="copy-unique">Copy</button>
+            </summary>
+            <div id="unique-list" class="list-content"></div>
+        </details>
+
+        <details id="duplicates-section">
+            <summary>
+                <div class="summary-left">
+                    <span class="toggle-arrow">▶</span>
+                    <span id="duplicates-label"></span>
+                </div>
+                <button class="copy-btn" id="copy-duplicates">Copy</button>
+            </summary>
+            <div id="duplicates-list" class="list-content"></div>
+        </details>
+    </div>
+
+    <script>
+        const textarea = document.getElementById('string-input');
+        const resultsSection = document.getElementById('results-section');
+        const duplicateCount = document.getElementById('duplicate-count');
+        const uniqueLabel = document.getElementById('unique-label');
+        const duplicatesLabel = document.getElementById('duplicates-label');
+        const uniqueList = document.getElementById('unique-list');
+        const duplicatesList = document.getElementById('duplicates-list');
+        const copyUniqueBtn = document.getElementById('copy-unique');
+        const copyDuplicatesBtn = document.getElementById('copy-duplicates');
+        const uniqueSection = document.getElementById('unique-section');
+        const duplicatesSection = document.getElementById('duplicates-section');
+
+        let currentUnique = [];
+        let currentDuplicates = [];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            textarea.focus();
+        });
+
+        function processInput(input) {
+            const items = input.split(/[\s\n]+/).map(s => s.trim()).filter(Boolean);
+            const seen = new Map();
+
+            for (const item of items) {
+                seen.set(item, (seen.get(item) || 0) + 1);
+            }
+
+            const unique = [];
+            const duplicates = [];
+
+            for (const [item, count] of seen.entries()) {
+                unique.push(item);
+                if (count > 1) {
+                    duplicates.push(item);
+                }
+            }
+
+            return { unique, duplicates };
+        }
+
+        function showCopiedFeedback(btn) {
+            btn.textContent = 'Copied!';
+            btn.classList.add('copied');
+            setTimeout(() => {
+                btn.textContent = 'Copy';
+                btn.classList.remove('copied');
+            }, 1500);
+        }
+
+        copyUniqueBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            if (currentUnique.length > 0) {
+                await window.electronAPI.copyToClipboard(currentUnique.join('\n'));
+                showCopiedFeedback(copyUniqueBtn);
+            }
+        });
+
+        copyDuplicatesBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            if (currentDuplicates.length > 0) {
+                await window.electronAPI.copyToClipboard(currentDuplicates.join('\n'));
+                showCopiedFeedback(copyDuplicatesBtn);
+            }
+        });
+
+        textarea.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+            }
+        });
+
+        textarea.addEventListener('keyup', (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                const input = textarea.value.trim();
+                if (!input) return;
+
+                const { unique, duplicates } = processInput(input);
+                currentUnique = unique;
+                currentDuplicates = duplicates;
+
+                const dupCount = duplicates.length;
+
+                if (dupCount === 0) {
+                    duplicateCount.textContent = 'No duplicates found';
+                    duplicateCount.className = 'duplicate-count no-duplicates';
+                } else {
+                    duplicateCount.textContent = `${dupCount} duplicate${dupCount > 1 ? 's' : ''} found`;
+                    duplicateCount.className = 'duplicate-count has-duplicates';
+                }
+
+                uniqueLabel.textContent = `Unique values (${unique.length})`;
+                uniqueList.textContent = unique.join('\n');
+
+                duplicatesLabel.textContent = `Duplicates (${duplicates.length})`;
+                duplicatesList.textContent = duplicates.join('\n');
+
+                uniqueSection.open = false;
+                duplicatesSection.style.display = dupCount > 0 ? '' : 'none';
+                duplicatesSection.open = false;
+
+                resultsSection.style.display = '';
+
+            } else if (event.key === 'Escape') {
+                window.electronAPI.closeRemoveDuplicates();
+            }
+        });
+    </script>
+</body>
+</html>

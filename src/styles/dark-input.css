@@ -611,3 +611,63 @@ input[type="number"]::-webkit-outer-spin-button {
     opacity: 1;
     height: auto;
 }
+
+/* Copy button — usable in any command window */
+.copy-btn {
+    background: #3d3d3d;
+    color: #ccc;
+    border: 1px solid #555;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+.copy-btn:hover { background: #9e0f9e; border-color: #9e0f9e; color: white; }
+.copy-btn.copied { background: #4CAF50; border-color: #4CAF50; color: white; }
+
+/* Collapsible result sections */
+details {
+    background: #2d2d2d;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    overflow: hidden;
+}
+summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    font-size: 13px;
+    font-weight: 500;
+    color: #ddd;
+}
+summary::-webkit-details-marker { display: none; }
+.summary-left { display: flex; align-items: center; gap: 8px; }
+.toggle-arrow {
+    font-size: 10px;
+    color: #666;
+    transition: transform 0.2s ease;
+    display: inline-block;
+}
+details[open] .toggle-arrow { transform: rotate(90deg); }
+
+/* Scrollable text list (results, values…) */
+.list-content {
+    padding: 0 12px 12px;
+    font-family: monospace;
+    font-size: 12px;
+    color: #aaa;
+    line-height: 1.6;
+    max-height: 120px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.list-content::-webkit-scrollbar { width: 4px; }
+.list-content::-webkit-scrollbar-track { background: #2d2d2d; }
+.list-content::-webkit-scrollbar-thumb { background: #555; border-radius: 2px; }
