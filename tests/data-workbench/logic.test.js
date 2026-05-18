@@ -1,6 +1,6 @@
 'use strict';
 
-const { evalCondition, evaluateLogicExpression, applyRowFilter } =
+const { evalCondition, evaluateLogicExpression, applyRowFilter, detectColType, makeRowComparator } =
     require('../../src/windows/data-workbench/logic');
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -342,6 +342,68 @@ describe('applyRowFilter', () => {
                 logic: ''
             });
             expect(result).toHaveLength(rows.length);
+        });
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// detectColType
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('detectColType', () => {
+    const rows = (vals) => vals.map(v => [v]);
+
+    test('all integers → number', () => expect(detectColType(rows(['1','2','3']), 0)).toBe('number'));
+    test('all decimals → number', () => expect(detectColType(rows(['1.5','2.3']), 0)).toBe('number'));
+    test('mixed int and decimal → number', () => expect(detectColType(rows(['10','3.14']), 0)).toBe('number'));
+    test('negatives → number', () => expect(detectColType(rows(['-5','0','3']), 0)).toBe('number'));
+    test('ISO dates → date', () => expect(detectColType(rows(['2024-01-01','2024-06-15']), 0)).toBe('date'));
+    test('text strings → string', () => expect(detectColType(rows(['alice','bob']), 0)).toBe('string'));
+    test('mixed text and number → string', () => expect(detectColType(rows(['1','abc']), 0)).toBe('string'));
+    test('empty values ignored in type detection', () => {
+        expect(detectColType([['1'],[''],['3']], 0)).toBe('number');
+    });
+    test('all empty → string', () => expect(detectColType(rows(['','']), 0)).toBe('string'));
+    test('no rows → string', () => expect(detectColType([], 0)).toBe('string'));
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// makeRowComparator
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('makeRowComparator', () => {
+    function sorted(rows, dir, colType) {
+        return [...rows].sort(makeRowComparator(0, dir, colType)).map(r => r[0]);
+    }
+
+    describe('numbers', () => {
+        test('asc', () => expect(sorted([['10'],['3'],['20']], 'asc',  'number')).toEqual(['3','10','20']));
+        test('desc', () => expect(sorted([['10'],['3'],['20']], 'desc', 'number')).toEqual(['20','10','3']));
+        test('negative numbers asc', () => expect(sorted([['-5'],['0'],['3']], 'asc', 'number')).toEqual(['-5','0','3']));
+        test('decimals asc', () => expect(sorted([['1.5'],['0.9'],['2.3']], 'asc', 'number')).toEqual(['0.9','1.5','2.3']));
+    });
+
+    describe('strings', () => {
+        test('asc', () => expect(sorted([['banana'],['apple'],['cherry']], 'asc',  'string')).toEqual(['apple','banana','cherry']));
+        test('desc', () => expect(sorted([['banana'],['apple'],['cherry']], 'desc', 'string')).toEqual(['cherry','banana','apple']));
+    });
+
+    describe('dates', () => {
+        test('asc', () => expect(sorted([['2024-06-01'],['2023-01-01'],['2024-01-15']], 'asc',  'date')).toEqual(['2023-01-01','2024-01-15','2024-06-01']));
+        test('desc', () => expect(sorted([['2024-06-01'],['2023-01-01'],['2024-01-15']], 'desc', 'date')).toEqual(['2024-06-01','2024-01-15','2023-01-01']));
+    });
+
+    describe('empty values always last', () => {
+        test('asc: empty at end', () => {
+            expect(sorted([[''],['3'],['1']], 'asc', 'number')).toEqual(['1','3','']);
+        });
+        test('desc: empty at end', () => {
+            expect(sorted([[''],['3'],['1']], 'desc', 'number')).toEqual(['3','1','']);
+        });
+        test('multiple empty rows stay at end', () => {
+            const r = sorted([[''],['2'],[''],['1']], 'asc', 'number');
+            expect(r.slice(0, 2)).toEqual(['1','2']);
+            expect(r.slice(2)).toEqual(['','']);
         });
     });
 });

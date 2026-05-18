@@ -1,19 +1,26 @@
-# Data Workbench
+# Data Workbench [BETA]
 
 The Data Workbench is a lightweight data manipulation tool built into SalesfOps. It lets you load tables from spreadsheets or Salesforce SOQL queries, then combine and transform them without leaving the app.
+
+> ⚠️ The Data Workbench is currently under development and testing. There are many scenarios and combinations to test (action sequences, nested formulas). Please let me know if you notice any unexpected behavior. It is not initially designed to handle large volumes of data (millions of records).
 
 ---
 
 ## Enabling the Data Workbench
 
-The feature is hidden by default while in early access. To enable it:
+1. Open **Settings** (from the tray menu).
+2. Click the **Workbench** tab.
+3. Enable **Data Workbench** and click **Save Settings**.
 
-1. Open **Settings** (from the menu bar / tray icon).
-2. With the Settings window focused and no text field selected, type **`data`** on your keyboard.
-3. A **Lab** section will appear at the bottom of the page with a **Data Workbench** toggle.
-4. Enable the checkbox and save.
+Once enabled, **Data Workbench** appears in its own section in the tray menu.
 
-Once enabled, **Data Workbench** will appear in the tray menu. The Lab section will also be visible automatically on future visits to Settings.
+### Unlocking SOQL queries and DML
+
+Fetching data directly from Salesforce orgs and pushing records back require the Salesforce CLI (`sf`) to be installed.
+
+1. Open **Settings** — with no text field focused, type **`sfdx`** on your keyboard.
+2. The app checks that `sf` is installed. If found, a **Salesforce CLI** tab appears and the setting is saved for future visits.
+3. Back in the **Workbench** tab, enable **SOQL Queries** and/or **DML Operations** depending on what you need.
 
 ---
 
@@ -29,7 +36,18 @@ Open Data Workbench from the tray menu. The window is divided into:
 
 ## Loading data
 
-Click **+ Add Table** to open the input panel. There are two ways to bring data in.
+Click **+ Add Table** to open the input panel. There are three ways to bring data in.
+
+### Import CSV file
+
+1. Select the **CSV File** tab.
+2. Drop a `.csv` file onto the drop zone, or click the zone to browse for a file.
+3. A preview shows the file name, column count, and row count. Optionally edit the **table name** field.
+4. Click **Import Table** (or **Cmd/Ctrl + Enter**) to load it.
+
+The first row is treated as column headers. The delimiter is auto-detected from the first line: if semicolons (`;`) outnumber commas, the file is parsed as semicolon-separated; otherwise comma-separated. UTF-8 BOM is stripped automatically if present. Quoted fields and escaped quotes (`""`) are handled correctly.
+
+To clear the selected file and pick a different one, click the **✕** next to the file name in the preview.
 
 ### Paste from spreadsheet
 
@@ -206,6 +224,26 @@ Add new columns derived from the source data. Click **+ Add computed column**, g
 - A live preview shows the result for the first row.
 - See [Formula Reference](formula-reference.md) for the full list of available functions and operators.
 
+#### Group
+*Aggregate rows that share the same value in a key column.*
+
+Select a **source table** and a **Group by** column. The output contains one row per distinct value of that column. A **`count_<column>`** column is always included automatically, containing the number of source rows in each group.
+
+For every other column, choose one of six aggregation modes using the toggle buttons:
+
+| Button | Behaviour |
+|--------|-----------|
+| **First** | Returns the first value encountered in the group. |
+| **Sum** | Sum of all numeric values in the group. Empty cells and non-numeric values are ignored by default (not treated as zero). Check **Blank = 0** to count them as zero instead. Returns empty if no valid numbers are found (or zero if Blank = 0 is on). |
+| **Avg** | Average of all numeric values in the group, with the same empty/non-numeric handling as Sum. When **Blank = 0** is on, blank and invalid cells count as 0 *and* factor into the denominator — e.g. `[100, blank, 200]` gives an average of 100, not 150. |
+| **Max** | Highest value — numeric if all values are numbers, date-aware if all values are valid dates, alphabetic otherwise. |
+| **Min** | Lowest value, same type-detection logic as Max. |
+| **Concat** | Joins all unique non-empty values with a separator (default `;`). Click **Concat** to reveal a small input field where you can change the separator. |
+
+Column names that you renamed in the result table are preserved when you re-edit the Group recipe or trigger a rebuild.
+
+---
+
 #### Split
 *Split one source table into several result tables, each containing the rows that match a given condition.*
 
@@ -248,9 +286,10 @@ Click **Schema** (top right) to open the Schema view. This shows your entire dat
 
 | Shape / colour | Meaning |
 |----------------|---------|
-| Blue node | Paste table |
-| Teal node | SOQL table |
+| Green node | Paste / CSV table |
+| Blue node | SOQL table |
 | Purple node | Result |
+| Red node | DML card |
 
 Solid arrows show recipe dependencies (one table feeds into another). Dashed arrows indicate SOQL bindings (a SOQL query uses a column from another table as an `IN` filter).
 
@@ -287,21 +326,101 @@ Color rules are saved and restored as part of the model file (see below).
 
 ## Saving and loading a model
 
-When you have tables and results set up, click **Save** (top right) to export the entire workspace as a JSON file. This file captures:
-- All table data (paste tables) or the query and org (SOQL tables).
+### Save
+
+When you have tables and results set up, click **Save** (top right) to export the workspace as a JSON file. This file captures:
+- The SOQL query and org identifier for each SOQL table (data is not embedded — re-run the query after loading).
+- The raw data for each Paste / CSV table.
 - All result recipes (the configuration for each result).
 - All column renames.
 - All color rules.
 
-Click **Load** to restore a previously saved model. This replaces the current workspace.
+Once a file has been saved or loaded, its name appears in the header bar. Clicking **Save** again pre-fills the dialog with the same filename, so you can overwrite in one click or choose a new name to save a copy.
 
-> **Note:** SOQL tables are saved with their query and org identifier. When loading, they are re-populated from the saved data — the query is not re-executed automatically.
+### Load
+
+Click **Load** to restore a previously saved model. This replaces the current workspace. After loading, the filename is shown in the header.
+
+> **Note:** SOQL tables are restored with their query only — the query is not re-executed automatically. Click **↻** on each card (or **⇊** to cascade) to fetch fresh data.
+
+### Save Snapshot
+
+Click **Save Snapshot** to export the workspace with all loaded table data embedded directly in the JSON — including SOQL query results and computed result tables. When you reload a snapshot, every table is immediately populated with data, with no queries to re-run and no files to re-import.
+
+Before saving, a warning reminds you that snapshot files are not encrypted. **Do not share snapshots that contain sensitive or GDPR-protected data.**
+
+Tables loaded from a snapshot show a purple **Snapshot** badge on their card. You can still click **↻** on any SOQL card to replace the snapshot data with a fresh query result.
 
 ---
 
 ## Notifications
 
 Operations that take time (cascade rebuilds, SOQL queries) show progress as **toast notifications** at the bottom-left of the screen. Each toast shows the current table being processed (e.g. "Rebuilding: MyResult… (2/5)") and updates as each step completes. Errors appear as persistent red toasts — they stay until you dismiss them manually with ✕.
+
+---
+
+## Clickable Salesforce IDs
+
+If a **Salesforce Instance URL** is configured in the app Settings, any cell value that looks like a Salesforce record ID (exactly 15 or 18 alphanumeric characters) is automatically rendered as a clickable link. Clicking it opens the record directly in your browser at `<instance-url>/<id>`.
+
+The link is styled as a subtle underline — it does not affect copy/paste or CSV export (the raw ID is always what gets exported).
+
+If no Instance URL is configured, cells display as plain text.
+
+---
+
+## DML Operations
+
+DML (Data Manipulation Language) cards let you push rows from any loaded table into Salesforce — inserting new records, updating existing ones, upserting based on an external ID field, or deleting records.
+
+> **Requires Salesforce CLI:** DML operations require `sf` to be installed and at least one org authenticated. Enable the feature in **Settings → Workbench → DML Operations**.
+
+### Creating a DML card
+
+Click **+ DML** (top right, visible once at least one table is loaded) to open the DML configuration panel.
+
+| Field | Description |
+|-------|-------------|
+| **Source table** | The table whose rows will be pushed to Salesforce. |
+| **Object** | Salesforce API name of the target object (e.g. `Account`, `Contact__c`). |
+| **Operation** | `insert`, `update`, `upsert`, or `delete`. |
+| **External ID field** | *(Upsert only)* API name of the field used as the match key. |
+| **Org** | The connected Salesforce org to push records to. |
+| **Batch size** | Number of records per API call — 1 to 200, default 200. Smaller batches update the results panel progressively but use more API calls. |
+| **All or none** | When enabled, the entire batch is rolled back if any record fails. When disabled, each record succeeds or fails independently. |
+
+Below the main config, the **Mappings** section lists each column from the source table alongside a field API name input. Toggle the checkbox on each row to include or exclude it from the push. Only mapped, included rows are sent to Salesforce.
+
+Click **Create DML** to add the card.
+
+### Running a DML
+
+DML cards do not run automatically — they must be triggered manually.
+
+Open the **Schema view** and click the DML node to open its preview panel. A **Run** button appears at the top. It is disabled when the source table is empty.
+
+Click **Run** to start. Records are sent batch by batch. As each batch completes, the preview panel updates live — every row gains a result column:
+
+- **✓ `<record ID>`** — record created or updated successfully.
+- **✗ `<error message>`** — the record failed, showing the first error returned by Salesforce.
+
+A **Last run** timestamp is shown above the results table once the run completes.
+
+### Results and rebuilds
+
+Results are displayed inline in the preview panel and kept until the next run or until the source table is rebuilt. When the source table is refreshed or replaced, DML results are cleared automatically and the card returns to "not yet run" state.
+
+### Color rules for DML cards
+
+DML cards support these conditions in the Color Rules panel:
+
+| Condition | When it fires |
+|-----------|---------------|
+| **Has records (source)** | The source table has at least one row. |
+| **No records (source)** | The source table is empty. |
+| **DML done — all OK** | Last run completed with no failures. |
+| **DML done — has errors** | Last run completed but at least one record failed. |
+| **DML not yet run** | No run has been triggered since the card was created or the source was rebuilt. |
 
 ---
 

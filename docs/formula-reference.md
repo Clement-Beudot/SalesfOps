@@ -152,6 +152,14 @@ Removes control characters (tabs, line breaks, etc.).
 CLEAN(Description)
 ```
 
+### `COUNT(text, search, [caseSensitive=true])`
+Counts the number of occurrences of a string inside another string. Case-sensitive by default; pass `false` as third argument to ignore case.
+```
+COUNT(Description, "urgent")         → number of times "urgent" appears
+COUNT(Tags, ",") + 1                 → number of comma-separated values
+COUNT(Name, "dupont", false)         → matches "Dupont", "DUPONT", "dupont"
+```
+
 ---
 
 ## Math functions
@@ -251,6 +259,22 @@ Sum of several values.
 SUM(Q1, Q2, Q3, Q4)
 ```
 
+### `AVERAGE(val1, val2, ...)`
+Arithmetic mean of several values.
+```
+AVERAGE(Q1, Q2, Q3, Q4)
+AVERAGE(Score1, Score2)
+```
+
+### `NUMBER(text)`
+Strict number parse — returns `""` if the value is not a valid number (unlike `VALUE` which strips non-numeric characters first).
+```
+NUMBER("42.5")      → 42.5
+NUMBER("€1234")     → ""    (contains non-numeric prefix)
+NUMBER("")          → ""
+IF(NUMBER(Amount) = "", "Invalid", Amount * 1.2)
+```
+
 ---
 
 ## Logic & conditional functions
@@ -316,6 +340,98 @@ Returns the **first non-empty** value.
 ```
 COALESCE(MobilePhone, LandlinePhone, "No phone")
 COALESCE(WorkEmail, PersonalEmail)
+```
+
+---
+
+## Date functions
+
+Dates are represented as **ISO 8601 strings** (`YYYY-MM-DD` or full datetime `YYYY-MM-DDTHH:MM:SS.sssZ`).  
+The parser accepts most common formats: ISO, Salesforce datetimes, and European `DD/MM/YYYY`.  
+Comparison operators (`>`, `<`, `=`, …) work correctly on ISO date strings.
+
+> **⚠ Date literals must be quoted.** An unquoted value like `2021-01-01` is evaluated as arithmetic (`2021 − 1 − 1 = 2019`). Always wrap date literals in quotes:
+> ```
+> {{Subscription Date}} > "2021-01-01"          ✓
+> DATEVALUE({{CloseDate}}) >= "2024-06-01"      ✓
+> {{Subscription Date}} > 2021-01-01            ✗  (evaluates to > 2019)
+> ```
+
+### `DATEVALUE(text)`
+Parses a date string and returns it normalised to `YYYY-MM-DD`. Returns `""` if the text is not a valid date.
+```
+DATEVALUE("2024-01-15")              → "2024-01-15"
+DATEVALUE("15/01/2024")              → "2024-01-15"
+DATEVALUE("2024-01-15T10:30:00Z")   → "2024-01-15"
+DATEVALUE("not a date")             → ""
+```
+
+### `DATETIMEVALUE(text)`
+Parses a date/datetime string and returns it as a full ISO datetime. Returns `""` if invalid.
+```
+DATETIMEVALUE("2024-01-15T10:30:00Z")  → "2024-01-15T10:30:00.000Z"
+DATETIMEVALUE("2024-01-15")            → "2024-01-15T00:00:00.000Z"
+```
+
+### `ISDATE(text)`
+Returns `TRUE` if the value can be parsed as a date, `FALSE` otherwise.
+```
+ISDATE(CloseDate)
+IF(ISDATE(StartDate), DATE_ADD(StartDate, 30, "day"), "")
+```
+
+### `TODAY()`
+Returns the current date as `YYYY-MM-DD` (UTC).
+```
+TODAY()
+DATE_DIFF(TODAY(), CreatedDate, "day")
+```
+
+### `NOW()`
+Returns the current datetime as an ISO string (UTC).
+```
+NOW()
+```
+
+### `YEAR(date)` / `MONTH(date)` / `DAY(date)`
+Extract the year, month (1–12), or day (1–31) from a date.
+```
+YEAR(CloseDate)
+MONTH(CreatedDate)
+DAY(BirthDate)
+```
+
+### `HOUR(date)` / `MINUTE(date)`
+Extract the hour (0–23) or minute (0–59) from a datetime.
+```
+HOUR(LastModifiedDate)
+MINUTE(LastModifiedDate)
+```
+
+### `DATE_ADD(date, n, unit)`
+Adds `n` units to a date. `unit` can be `"day"` (default), `"month"`, or `"year"`.
+```
+DATE_ADD(CloseDate, 30, "day")       → 30 days later
+DATE_ADD(StartDate, 3, "month")      → 3 months later
+DATE_ADD(ContractDate, 1, "year")    → 1 year later
+DATE_ADD(ExpiryDate, -7, "day")      → 7 days earlier
+```
+
+### `DATE_DIFF(date1, date2, unit)`
+Returns `date1 − date2` in the given unit (`"day"` default, `"month"`, `"year"`).  
+Positive = date1 is after date2.
+```
+DATE_DIFF(TODAY(), CreatedDate, "day")    → age in days
+DATE_DIFF(CloseDate, TODAY(), "month")    → months until close
+DATE_DIFF(EndDate, StartDate, "year")     → contract duration in years
+```
+
+### `DATE_FORMAT(date, format)`
+Formats a date using a pattern string. Tokens: `YYYY`, `YY`, `MM`, `DD`, `HH`, `mm`, `SS`.
+```
+DATE_FORMAT(CloseDate, "DD/MM/YYYY")          → "15/01/2024"
+DATE_FORMAT(CreatedDate, "YYYY-MM")           → "2024-01"
+DATE_FORMAT(LastModifiedDate, "DD/MM/YYYY HH:mm")  → "15/01/2024 10:30"
 ```
 
 ---
@@ -395,6 +511,24 @@ IF(LEN(REPLACE(SIRET, " ", "")) = 14, "OK", "Wrong length: " & LEN(REPLACE(SIRET
 # Columns with spaces or accented characters
 CONCAT([First Name], " ", [Last Name])
 IF([Company Name] = "", "Unknown", UPPER([Company Name]))
+
+# Age of a deal in days
+DATE_DIFF(TODAY(), CreatedDate, "day") & " days"
+
+# Fiscal quarter from a close date
+"Q" & INT((MONTH(CloseDate) - 1) / 3 + 1) & " " & YEAR(CloseDate)
+
+# Format Salesforce datetime to European date
+DATE_FORMAT(DATEVALUE(CreatedDate), "DD/MM/YYYY")
+
+# Renewal date = contract start + 1 year
+DATE_ADD(DATEVALUE([Contract Start]), 1, "year")
+
+# Flag deals closing within 30 days
+IF(DATE_DIFF(CloseDate, TODAY(), "day") <= 30, "Closing soon", "")
+
+# Safe number multiplication (skip blank cells)
+IF(ISNUMBER(Amount), Amount * 1.2, "")
 ```
 
 ---

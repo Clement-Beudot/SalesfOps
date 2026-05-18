@@ -10,8 +10,12 @@ document.querySelectorAll('.op-tile').forEach(tile => {
     });
 });
 
+const opTilesEl = document.querySelector('.op-tiles');
+function unlockOpTiles() { opTilesEl.classList.remove('op-tiles--locked'); }
+
 function openResultPanel() {
     currentOp = 'enrich';
+    unlockOpTiles();
     document.querySelectorAll('.op-tile').forEach(t => t.classList.remove('active'));
     document.querySelector('.op-tile[data-op="enrich"]').classList.add('active');
     renderResultConfig();
@@ -25,6 +29,8 @@ function renderResultConfig() {
         renderTransformConfig();
     } else if (currentOp === 'split') {
         renderSplitConfig();
+    } else if (currentOp === 'group') {
+        renderGroupConfig();
     } else {
         renderJoinKeyConfig();
         if (currentOp === 'enrich') renderColSelector();
@@ -35,13 +41,14 @@ function makeTableSelect(id, defaultIdx) {
     const sel = document.createElement('select');
     sel.className = 'join-select';
     sel.id = id;
-    tables.forEach(t => {
+    const eligible = tables.filter(t => t.source !== 'dml');
+    eligible.forEach(t => {
         const opt = document.createElement('option');
         opt.value = t.id;
         opt.textContent = t.name;
         sel.appendChild(opt);
     });
-    if (tables[defaultIdx]) sel.value = tables[defaultIdx].id;
+    if (eligible[defaultIdx]) sel.value = eligible[defaultIdx].id;
     return sel;
 }
 
@@ -102,6 +109,14 @@ function renderJoinKeyConfig() {
     grid.append(leftSide, sep, rightSide);
     resultConfig.appendChild(grid);
 
+    const caseRow = document.createElement('label');
+    caseRow.className = 'join-case-row';
+    const caseCheck = document.createElement('input');
+    caseCheck.type = 'checkbox';
+    caseCheck.id = 'rc-case-insensitive';
+    caseRow.append(caseCheck, ' Ignore case  (a = A)');
+    resultConfig.appendChild(caseRow);
+
     leftTableSel.addEventListener('change', () => {
         syncColsToTable(leftTableSel, leftColSel);
         if (currentOp === 'enrich') renderColSelector();
@@ -112,22 +127,33 @@ function renderJoinKeyConfig() {
     });
 }
 
+function addColSelActions(header, getContainer) {
+    const actions = document.createElement('div');
+    actions.className = 'col-sel-actions';
+    const btnAll  = document.createElement('button');
+    btnAll.className  = 'col-sel-btn';
+    btnAll.textContent = 'All';
+    const btnNone = document.createElement('button');
+    btnNone.className = 'col-sel-btn';
+    btnNone.textContent = 'None';
+    btnAll.addEventListener('click',  () => getContainer().querySelectorAll('.col-chip').forEach(c => c.classList.add('selected')));
+    btnNone.addEventListener('click', () => getContainer().querySelectorAll('.col-chip').forEach(c => c.classList.remove('selected')));
+    actions.append(btnAll, btnNone);
+    header.appendChild(actions);
+}
+
 function renderColSelector() {
     const existing = resultConfig.querySelector('.col-selector-area');
     if (existing) existing.remove();
 
-    const area = document.createElement('div');
-    area.className = 'col-selector-area';
-
-    const label = document.createElement('div');
-    label.className = 'section-label';
-    label.textContent = 'Columns to include';
-    area.appendChild(label);
+    const { section, header, body } = makeTransformSection('Columns to include', 'keep');
+    section.classList.add('col-selector-area');
+    addColSelActions(header, () => section);
 
     const groups = document.createElement('div');
     groups.className = 'col-groups';
 
-    const leftSel = document.getElementById('rc-left-table');
+    const leftSel  = document.getElementById('rc-left-table');
     const rightSel = document.getElementById('rc-right-table');
 
     [leftSel, rightSel].forEach(sel => {
@@ -153,8 +179,8 @@ function renderColSelector() {
         groups.appendChild(group);
     });
 
-    area.appendChild(groups);
-    resultConfig.appendChild(area);
+    body.appendChild(groups);
+    resultConfig.appendChild(section);
 }
 
 // ── Transform config ───────────────────────────────
@@ -276,8 +302,9 @@ function renderTransformColSelector(tableId) {
     const existing = resultConfig.querySelector('.transform-col-area');
     if (existing) existing.remove();
 
-    const { section, body } = makeTransformSection('Columns to Keep', 'keep');
+    const { section, header, body } = makeTransformSection('Columns to Keep', 'keep');
     section.classList.add('transform-col-area');
+    addColSelActions(header, () => section);
 
     const chipRow = document.createElement('div');
     chipRow.className = 'col-group';
@@ -737,6 +764,148 @@ function updateLogicDefault(conditionsList, logicInput) {
 
 // ── Split config ───────────────────────────────────
 
+function renderGroupConfig() {
+    // ── Source table row ──
+    const sourceRow = document.createElement('div');
+    sourceRow.className = 'config-row';
+    const sourceLabel = document.createElement('span');
+    sourceLabel.className = 'section-label';
+    sourceLabel.textContent = 'Source table';
+    const sourceSel = makeTableSelect('rc-group-table', 0);
+    sourceRow.append(sourceLabel, sourceSel);
+    resultConfig.appendChild(sourceRow);
+
+    // ── Group-by column row ──
+    const groupRow = document.createElement('div');
+    groupRow.className = 'config-row';
+    const groupLabel = document.createElement('span');
+    groupLabel.className = 'section-label';
+    groupLabel.textContent = 'Group by';
+    const groupColSel = document.createElement('select');
+    groupColSel.className = 'join-select';
+    groupColSel.id = 'rc-group-col';
+    groupRow.append(groupLabel, groupColSel);
+    resultConfig.appendChild(groupRow);
+
+    // ── Aggregation list ──
+    const aggSection = document.createElement('div');
+    aggSection.className = 'group-agg-section';
+    const aggTitle = document.createElement('div');
+    aggTitle.className = 'section-label';
+    aggTitle.style.marginTop = '10px';
+    aggTitle.textContent = 'For other columns';
+    const aggList = document.createElement('div');
+    aggList.id = 'group-agg-list';
+    aggList.className = 'group-agg-list';
+    aggSection.append(aggTitle, aggList);
+    resultConfig.appendChild(aggSection);
+
+    function rebuildAggList() {
+        const src = tables.find(t => t.id === sourceSel.value);
+        const groupColId = groupColSel.value;
+
+        // Rebuild group col options
+        groupColSel.innerHTML = '';
+        (src?.columnDefs || src?.columns?.map(n => ({ id: n, name: n })) || []).forEach(def => {
+            const opt = document.createElement('option');
+            opt.value = def.id;
+            opt.textContent = def.name;
+            groupColSel.appendChild(opt);
+        });
+        if (groupColId && [...groupColSel.options].some(o => o.value === groupColId)) {
+            groupColSel.value = groupColId;
+        }
+
+        // Rebuild agg rows (all columns except the group key)
+        aggList.innerHTML = '';
+        if (!src) return;
+        const defs = src.columnDefs || src.columns.map(n => ({ id: n, name: n }));
+        defs.filter(d => d.id !== groupColSel.value).forEach(def => {
+            aggList.appendChild(makeGroupAggRow(def));
+        });
+    }
+
+    sourceSel.addEventListener('change', rebuildAggList);
+    groupColSel.addEventListener('change', rebuildAggList);
+    rebuildAggList();
+}
+
+function makeGroupAggRow(def, prefill = null) {
+    const row = document.createElement('div');
+    row.className = 'group-agg-row';
+    row.dataset.colId = def.id;
+
+    const label = document.createElement('span');
+    label.className = 'group-agg-col-name';
+    label.textContent = def.name;
+    label.title = def.name;
+
+    const btnGroup = document.createElement('div');
+    btnGroup.className = 'group-agg-btns';
+
+    const activeAgg = prefill?.agg || 'first';
+    const isConcat = activeAgg === 'concat_unique' || activeAgg === 'concat_all';
+
+    const sepInput = document.createElement('input');
+    sepInput.type = 'text';
+    sepInput.className = 'group-agg-sep';
+    sepInput.placeholder = ';';
+    sepInput.value = prefill?.separator ?? ';';
+    sepInput.style.display = isConcat ? '' : 'none';
+
+    const zeroLabel = document.createElement('label');
+    zeroLabel.className = 'group-agg-zero';
+    zeroLabel.title = 'Treat blank, null or invalid values as 0';
+    zeroLabel.style.display = ['sum', 'avg'].includes(activeAgg) ? '' : 'none';
+    const zeroCb = document.createElement('input');
+    zeroCb.type = 'checkbox';
+    zeroCb.checked = prefill?.treatBlankAsZero ?? false;
+    zeroLabel.append(zeroCb, 'Blank = 0');
+
+    const uniqueLabel = document.createElement('label');
+    uniqueLabel.className = 'group-agg-unique';
+    uniqueLabel.title = 'Remove duplicate values from the concatenation';
+    uniqueLabel.style.display = isConcat ? '' : 'none';
+    const uniqueCb = document.createElement('input');
+    uniqueCb.type = 'checkbox';
+    uniqueCb.checked = activeAgg !== 'concat_all';
+    uniqueLabel.append(uniqueCb, 'Unique');
+
+    // The concat button's data-agg is kept in sync by the uniqueCb
+    uniqueCb.addEventListener('change', () => {
+        const concatBtn = btnGroup.querySelector('.group-agg-btn.active');
+        if (concatBtn && (concatBtn.dataset.agg === 'concat_unique' || concatBtn.dataset.agg === 'concat_all')) {
+            concatBtn.dataset.agg = uniqueCb.checked ? 'concat_unique' : 'concat_all';
+        }
+    });
+
+    [['first', 'First'], ['sum', 'Sum'], ['avg', 'Avg'], ['max', 'Max'], ['min', 'Min'], [isConcat ? activeAgg : 'concat_unique', 'Concat']].forEach(([v, lbl]) => {
+        const btn = document.createElement('button');
+        const isActive = isConcat ? lbl === 'Concat' : v === activeAgg;
+        btn.className = 'group-agg-btn' + (isActive ? ' active' : '');
+        btn.dataset.agg = v;
+        btn.textContent = lbl;
+        btn.type = 'button';
+        btn.addEventListener('click', () => {
+            btnGroup.querySelectorAll('.group-agg-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const nowConcat = btn.dataset.agg === 'concat_unique' || btn.dataset.agg === 'concat_all';
+            sepInput.style.display = nowConcat ? '' : 'none';
+            uniqueLabel.style.display = nowConcat ? '' : 'none';
+            zeroLabel.style.display = ['sum', 'avg'].includes(btn.dataset.agg) ? '' : 'none';
+            if (nowConcat) {
+                // Default to unique=true when first switching to concat
+                uniqueCb.checked = true;
+                btn.dataset.agg = 'concat_unique';
+            }
+        });
+        btnGroup.appendChild(btn);
+    });
+
+    row.append(label, btnGroup, sepInput, uniqueLabel, zeroLabel);
+    return row;
+}
+
 function renderSplitConfig() {
     // Source table row
     const sourceRow = document.createElement('div');
@@ -754,6 +923,12 @@ function renderSplitConfig() {
     branchList.id = 'split-branch-list';
     resultConfig.appendChild(branchList);
 
+    // Duplicate-condition warning (shown by checkSplitDuplicates)
+    const dupWarning = document.createElement('div');
+    dupWarning.className = 'split-dup-warning hidden';
+    dupWarning.textContent = '⚠ Two or more branches have identical conditions — duplicate rows will be produced.';
+    resultConfig.appendChild(dupWarning);
+
     // Buttons row
     const btnRow = document.createElement('div');
     btnRow.className = 'split-btn-row';
@@ -761,7 +936,7 @@ function renderSplitConfig() {
     const addBtn = document.createElement('button');
     addBtn.className = 'btn-action';
     addBtn.textContent = '+ Add Branch';
-    addBtn.addEventListener('click', () => addSplitBranch(branchList, tables.find(t => t.id === sourceSel.value)));
+    addBtn.addEventListener('click', () => { addSplitBranch(branchList, tables.find(t => t.id === sourceSel.value)); checkSplitDuplicates(); });
 
     const addDefaultBtn = document.createElement('button');
     addDefaultBtn.className = 'btn-action split-add-default-btn';
@@ -789,6 +964,20 @@ function renderSplitConfig() {
     });
 }
 
+function checkSplitDuplicates() {
+    const warning = document.querySelector('.split-dup-warning');
+    if (!warning) return;
+    const conditions = [...document.querySelectorAll('#split-branch-list .split-branch:not(.split-branch--default)')]
+        .map(b => {
+            const op  = b.querySelector('.split-cond-op')?.value  || '=';
+            const col = b.querySelector('.split-cond-col')?.value  || '';
+            const val = (op === 'empty' || op === 'not_empty') ? '' : (b.querySelector('.split-cond-val')?.value || '');
+            return `${col}|${op}|${val}`;
+        });
+    const hasDup = conditions.length !== new Set(conditions).size;
+    warning.classList.toggle('hidden', !hasDup);
+}
+
 function addSplitBranch(branchList, src, prefill = null, isDefault = false) {
     const idx = branchList.querySelectorAll('.split-branch:not(.split-branch--default)').length + 1;
     const branch = document.createElement('div');
@@ -807,7 +996,7 @@ function addSplitBranch(branchList, src, prefill = null, isDefault = false) {
     const removeBtn = document.createElement('button');
     removeBtn.className = 'btn-delete btn-delete-sm';
     removeBtn.textContent = '✕';
-    removeBtn.addEventListener('click', () => branch.remove());
+    removeBtn.addEventListener('click', () => { branch.remove(); checkSplitDuplicates(); });
 
     header.append(labelInput, removeBtn);
     branch.appendChild(header);
@@ -844,7 +1033,10 @@ function addSplitBranch(branchList, src, prefill = null, isDefault = false) {
         valInput.style.display = isNoVal ? 'none' : '';
         valInput.type          = isNum ? 'number' : 'text';
         valInput.placeholder   = isNum ? '0' : 'value…';
+        checkSplitDuplicates();
     });
+    colSel.addEventListener('change', checkSplitDuplicates);
+    valInput.addEventListener('input', checkSplitDuplicates);
 
     if (prefill?.condition) {
         opSel.value    = prefill.condition.op    || '=';
@@ -1054,6 +1246,7 @@ btnDeleteResult.addEventListener('click', () => {
     if (!deleteTableSafe(t, card, resultError)) return;
 
     editingTableEntry = null;
+    unlockOpTiles();
     btnCreateResult.textContent = 'Create Result';
     btnDeleteResult.style.display = 'none';
     resultError.classList.remove('visible');
@@ -1084,11 +1277,14 @@ btnCreateResult.addEventListener('click', () => {
                 condition:    branch.isDefault ? null : branch.condition
             };
             const { columnDefs, columns, rows } = computeFromRecipe(recipe);
-            tbl.columns    = columns;
-            tbl.columnDefs = columnDefs;
+            const mergedDefs1 = preserveResultRenames(tbl.columnDefs, columnDefs);
+            tbl.columnDefs = mergedDefs1;
+            tbl.columns    = mergedDefs1.map(d => d.name);
             tbl.rows       = rows.map(r => [...r]);
             tbl.recipe     = recipe;
             tbl.stale      = false;
+            tbl.isSnapshot = false;
+            tbl.lastRun    = new Date().toISOString();
             if (branch.label) tbl.name = branch.label;
             tbl.description = resultDescription.value.trim() || null;
             updateBindingsHint();
@@ -1114,8 +1310,9 @@ btnCreateResult.addEventListener('click', () => {
                     }
                 });
             }
-            if (!schemaOverlay.classList.contains('hidden')) renderSchema();
+            renderSchema();
             editingTableEntry = null;
+            unlockOpTiles();
             btnCreateResult.textContent = 'Create Result';
             btnDeleteResult.style.display = 'none';
             resultPanel.classList.remove('open');
@@ -1160,6 +1357,24 @@ btnCreateResult.addEventListener('click', () => {
         if (columnMapping.length === 0) { showError(resultError, 'Add at least one column mapping.'); return; }
         recipe = { op: 'stack', leftId: lSel.value, rightId: rSel.value, columnMapping };
 
+    } else if (currentOp === 'group') {
+        const sourceSel = document.getElementById('rc-group-table');
+        const groupColSel = document.getElementById('rc-group-col');
+        if (!sourceSel?.value) { showError(resultError, 'Select a source table.'); return; }
+        if (!groupColSel?.value) { showError(resultError, 'Select a column to group by.'); return; }
+        // Preserve stable IDs from existing recipe if editing, otherwise generate fresh ones
+        const existingRecipe = editingTableEntry?.recipe?.op === 'group' ? editingTableEntry.recipe : null;
+        const aggregations = [...document.querySelectorAll('#group-agg-list .group-agg-row')].map(row => {
+            const colId = row.dataset.colId;
+            const agg   = row.querySelector('.group-agg-btn.active')?.dataset.agg || 'first';
+            const sep   = row.querySelector('.group-agg-sep').value;
+            const treatBlankAsZero = row.querySelector('.group-agg-zero input')?.checked ?? false;
+            const existing = existingRecipe?.aggregations?.find(a => a.colId === colId);
+            return { colId, agg, outColId: existing?.outColId || genColId(), separator: sep, treatBlankAsZero };
+        });
+        const countColId = existingRecipe?.countColId || genColId();
+        recipe = { op: 'group', sourceId: sourceSel.value, groupColId: groupColSel.value, countColId, aggregations };
+
     } else {
         const lSel = document.getElementById('rc-left-table');
         const rSel = document.getElementById('rc-right-table');
@@ -1168,6 +1383,7 @@ btnCreateResult.addEventListener('click', () => {
         const leftCol = document.getElementById('rc-left-col')?.value;
         const rightCol = document.getElementById('rc-right-col')?.value;
         if (!leftCol || !rightCol) { showError(resultError, 'Select key columns.'); return; }
+        const caseInsensitive = document.getElementById('rc-case-insensitive')?.checked || false;
 
         if (currentOp === 'enrich') {
             const selected = [...resultConfig.querySelectorAll('.col-chip.selected')];
@@ -1175,10 +1391,11 @@ btnCreateResult.addEventListener('click', () => {
             recipe = {
                 op: 'enrich',
                 leftId: lSel.value, rightId: rSel.value, leftCol, rightCol,
+                caseInsensitive,
                 selectedCols: selected.map(chip => ({ colId: chip.dataset.colId }))
             };
         } else {
-            recipe = { op: currentOp, leftId: lSel.value, rightId: rSel.value, leftCol, rightCol };
+            recipe = { op: currentOp, leftId: lSel.value, rightId: rSel.value, leftCol, rightCol, caseInsensitive };
         }
     }
 
@@ -1187,11 +1404,14 @@ btnCreateResult.addEventListener('click', () => {
     if (editingTableEntry !== null) {
         // Update existing result card in place
         const tbl = editingTableEntry;
-        tbl.columns    = columns;
-        tbl.columnDefs = columnDefs;
+        const mergedDefs = preserveResultRenames(tbl.columnDefs, columnDefs);
+        tbl.columnDefs = mergedDefs;
+        tbl.columns    = mergedDefs.map(d => d.name);
         tbl.rows       = rows.map(r => [...r]);
         tbl.recipe     = recipe;
         tbl.stale      = false;
+        tbl.isSnapshot = false;
+        tbl.lastRun    = new Date().toISOString();
         tbl.description = resultDescription.value.trim() || null;
         updateBindingsHint();
         const existingCard = document.querySelector(`.table-card[data-table-id="${tbl.id}"]`);
@@ -1206,8 +1426,9 @@ btnCreateResult.addEventListener('click', () => {
             existingCard.addEventListener('animationend', () => existingCard.classList.remove('recalc-flash'), { once: true });
         }
         markDependentsStale(tbl.id);
-        if (!schemaOverlay.classList.contains('hidden')) renderSchema();
+        renderSchema();
         editingTableEntry = null;
+        unlockOpTiles();
         btnCreateResult.textContent = 'Create Result';
         btnDeleteResult.style.display = 'none';
     } else {
@@ -1223,6 +1444,7 @@ function openResultPanelForEdit(tableEntry) {
     editingTableEntry = tableEntry;
     const op = tableEntry.recipe?.op || 'transform';
     currentOp = op;
+    opTilesEl.classList.add('op-tiles--locked');
     document.querySelectorAll('.op-tile').forEach(t => t.classList.remove('active'));
     document.querySelector(`.op-tile[data-op="${op}"]`)?.classList.add('active');
     renderResultConfig();
@@ -1301,6 +1523,51 @@ function populateResultFromRecipe(recipe) {
             }
         }
 
+    } else if (recipe.op === 'group') {
+        const sourceSel  = document.getElementById('rc-group-table');
+        const groupColSel = document.getElementById('rc-group-col');
+        if (sourceSel) {
+            sourceSel.value = recipe.sourceId;
+            // Rebuild group col options and agg list, then restore selections
+            const src = tables.find(t => t.id === recipe.sourceId);
+            const defs = src?.columnDefs || src?.columns?.map(n => ({ id: n, name: n })) || [];
+            groupColSel.innerHTML = '';
+            defs.forEach(def => {
+                const opt = document.createElement('option');
+                opt.value = def.id; opt.textContent = def.name;
+                groupColSel.appendChild(opt);
+            });
+            if (recipe.groupColId) {
+                groupColSel.value = recipe.groupColId;
+                // Fallback: if no direct ID match (e.g. paste table later got stable IDs),
+                // try matching by column name or origin so the UI stays consistent with
+                // the computation (colIdx already has the same fallback).
+                if (groupColSel.value !== recipe.groupColId) {
+                    const fallback = defs.find(d => d.name === recipe.groupColId || d.origin === recipe.groupColId);
+                    if (fallback) groupColSel.value = fallback.id;
+                }
+            }
+            // Resolved ID: what's actually selected in the select (may differ from stored value)
+            const resolvedGroupId = groupColSel.value;
+            // Rebuild agg list with saved aggregations.
+            // Use the result table's column name (may have been renamed by the user)
+            // rather than the source name, so the editor reflects what the user sees.
+            const resultDefs = editingTableEntry?.columnDefs || [];
+            const aggList = document.getElementById('group-agg-list');
+            if (aggList) {
+                aggList.innerHTML = '';
+                defs.filter(d => d.id !== resolvedGroupId).forEach(def => {
+                    // Match saved agg by ID first, then fall back to name/origin
+                    const savedAgg = recipe.aggregations?.find(a =>
+                        a.colId === def.id || a.colId === def.name || a.colId === def.origin
+                    );
+                    const resultDef = resultDefs.find(d => d.id === savedAgg?.outColId);
+                    const displayDef = resultDef ? { ...def, name: resultDef.name } : def;
+                    aggList.appendChild(makeGroupAggRow(displayDef, savedAgg || null));
+                });
+            }
+        }
+
     } else if (recipe.op === 'stack') {
         const lSel = document.getElementById('rc-left-table');
         const rSel = document.getElementById('rc-right-table');
@@ -1318,6 +1585,8 @@ function populateResultFromRecipe(recipe) {
         if (rSel)  { rSel.value = recipe.rightId;  rSel.dispatchEvent(new Event('change')); }
         if (lcSel) lcSel.value = recipe.leftCol;
         if (rcSel) rcSel.value = recipe.rightCol;
+        const ciCheck = document.getElementById('rc-case-insensitive');
+        if (ciCheck) ciCheck.checked = !!recipe.caseInsensitive;
         // For enrich: select the previously chosen enrichment columns
         if (recipe.op === 'enrich' && recipe.selectedCols) {
             setTimeout(() => {
@@ -1330,9 +1599,14 @@ function populateResultFromRecipe(recipe) {
     }
 }
 
-function serializeModel() {
-    return {
+function serializeModel(includeData = false) {
+    const now = new Date().toISOString();
+    const out = {
         version: 2,
+        name: schemaName || '',
+        description: schemaDescription || '',
+        createdAt: schemaCreatedAt || now,
+        updatedAt: now,
         tableCounter,
         colorRules: colorRules.map(r => ({ ...r })),
         tables: tables.map(t => {
@@ -1340,37 +1614,52 @@ function serializeModel() {
             if (t.columnDefs)  e.columnDefs  = t.columnDefs.map(d => ({ ...d }));
             if (t.description) e.description = t.description;
             if (t.previewLimit && t.previewLimit !== 100) e.previewLimit = t.previewLimit;
+            if (t.lastRun)     e.lastRun     = t.lastRun;
+            if (t.sort)        e.sort        = { ...t.sort };
             if (t.source === 'soql')   { e.soqlQuery = t.soqlQuery; e.orgIdentifier = t.orgIdentifier; }
             if (t.source === 'result') { e.recipe = t.recipe; }
+            if (t.source === 'dml' && t.dmlConfig)    { e.dmlConfig = { ...t.dmlConfig, mappings: (t.dmlConfig.mappings || []).map(m => ({ ...m })) }; }
+            if (includeData && t.rows?.length) e.snapshotRows = t.rows.map(r => [...r]);
             return e;
         })
     };
+    if (includeData) {
+        out.isSnapshot = true;
+        out.snapshotDate = new Date().toISOString();
+    }
+    return out;
 }
 
 async function deserializeModel(data) {
-    // Migrate v1 → v2 before processing
-    const migrated = migrateModelV1toV2(data) || data;
-
     // Clear current state
     tables = [];
     colorRules = [];
+    schemaTransform = { x: 0, y: 0, scale: 1 };
     document.querySelectorAll('.table-card').forEach(c => c.remove());
     emptyState.style.display = '';
     btnResult.style.display = 'none';
     btnSaveModel.style.display = 'none';
-    btnSchema.style.display = 'none';
+    btnSnapshotModel.style.display = 'none';
+    btnDml.style.display = 'none';
     if (typeof btnColorRules !== 'undefined') btnColorRules.style.display = 'none';
-    switchToTables();
+    renderSchema();
     resultPanel.classList.remove('open');
     addPanel.classList.remove('open');
+    closeDmlPanel();
     btnResult.classList.remove('active-toggle');
     btnResult.textContent = '+ Add Result';
     btnAdd.classList.remove('active-toggle');
     btnAdd.textContent = '+ Add Table';
 
+    // Load schema metadata
+    schemaName        = data.name        || '';
+    schemaDescription = data.description || '';
+    schemaCreatedAt   = data.createdAt   || null;
+    updateSchemaBarTitle();
+
     // Build table ID remap (saved IDs → fresh runtime IDs to avoid collisions)
     const idMap = {};
-    (migrated.tables || []).forEach((t, i) => {
+    (data.tables || []).forEach((t, i) => {
         idMap[t.id] = `t_${Date.now()}_${i}`;
     });
 
@@ -1387,30 +1676,48 @@ async function deserializeModel(data) {
         return r;
     }
 
-    tableCounter = migrated.tableCounter || 0;
-    colorRules = (migrated.colorRules || []).map(r => ({
+    tableCounter = data.tableCounter || 0;
+    colorRules = (data.colorRules || []).map(r => ({
         ...r,
         tableId: idMap[r.tableId] ?? r.tableId
     }));
 
-    for (const t of (migrated.tables || [])) {
+    for (const t of (data.tables || [])) {
         const newId = idMap[t.id];
+
+        if (t.source === 'dml') {
+            const dmlConfig = { ...(t.dmlConfig || {}), mappings: (t.dmlConfig?.mappings || []).map(m => ({ ...m })) };
+            // Remap sourceTableId
+            if (dmlConfig.sourceTableId) dmlConfig.sourceTableId = idMap[dmlConfig.sourceTableId] ?? dmlConfig.sourceTableId;
+            addDmlCard({ id: newId, name: t.name, dmlConfig });
+            continue;
+        }
+
+        const hasSnapshot = Array.isArray(t.snapshotRows) && t.snapshotRows.length > 0;
         addTable({
             id:            newId,
             name:          t.name,
             source:        t.source,
             columns:       t.columns || [],
             columnDefs:    t.columnDefs || null,
-            rows:          [],
+            rows:          hasSnapshot ? t.snapshotRows : [],
             recipe:        remapRecipe(t.recipe),
             soqlQuery:     t.soqlQuery     || null,
             orgIdentifier: t.orgIdentifier || null,
-            stale:         t.source === 'result',
+            stale:         t.source === 'result' && !hasSnapshot,
             description:   t.description  || null,
             previewLimit:  t.previewLimit  || 100,
+            isSnapshot:    hasSnapshot,
         });
+        if (t.lastRun || t.sort) {
+            const loaded = tables.find(u => u.id === newId);
+            if (loaded) {
+                if (t.lastRun) loaded.lastRun = t.lastRun;
+                if (t.sort)    loaded.sort    = t.sort;
+            }
+        }
 
-        if (t.source === 'paste' || t.source === 'soql') {
+        if (!hasSnapshot && (t.source === 'paste' || t.source === 'soql')) {
             const card = document.querySelector(`.table-card[data-table-id="${newId}"]`);
             card?.querySelector('.btn-edit-panel')?.click();
         }

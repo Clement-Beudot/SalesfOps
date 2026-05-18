@@ -1,25 +1,5 @@
-// ── Schema view toggle ────────────────────────────
-
-function switchToSchema() {
-    content.classList.add('hidden');
-    schemaOverlay.classList.remove('hidden');
-    btnSchema.textContent = 'Switch to Tables';
-    btnSchema.classList.add('active-toggle');
-    renderSchema();
-}
-
-function switchToTables() {
-    schemaOverlay.classList.add('hidden');
-    schemaTooltip.classList.add('hidden');
-    content.classList.remove('hidden');
-    btnSchema.textContent = 'Switch to Schema';
-    btnSchema.classList.remove('active-toggle');
-}
-
-btnSchema.addEventListener('click', () => {
-    if (schemaOverlay.classList.contains('hidden')) switchToSchema();
-    else switchToTables();
-});
+function switchToSchema() { renderSchema(); }
+function switchToTables() { renderSchema(); }
 
 // ── Preview: rename on double-click ───────────────
 schemaPreviewTitle.addEventListener('dblclick', () => {
@@ -44,7 +24,7 @@ schemaPreviewTitle.addEventListener('dblclick', () => {
     });
     document.addEventListener('mousemove', e => {
         if (!active) return;
-        const w = Math.max(200, Math.min(800, startW - (e.clientX - startX)));
+        const w = Math.max(200, Math.min(window.innerWidth - 120, startW - (e.clientX - startX)));
         schemaPreview.style.width = `${w}px`;
     });
     document.addEventListener('mouseup', () => {
@@ -55,6 +35,86 @@ schemaPreviewTitle.addEventListener('dblclick', () => {
         document.body.style.userSelect = '';
     });
 }());
+
+// ── Preview search ─────────────────────────────────
+let previewSearchWrap = null; // keep ref so applySearch can re-render on reopen
+
+// ── Pan / zoom ─────────────────────────────────────
+let schemaTransform = { x: 0, y: 0, scale: 1 };
+
+function applySchemaTransform() {
+    const vp = schemaCanvas.querySelector('#schema-viewport');
+    if (vp) vp.setAttribute('transform', `translate(${schemaTransform.x},${schemaTransform.y}) scale(${schemaTransform.scale})`);
+}
+
+function fitSchemaToView() {
+    const vp = schemaCanvas.querySelector('#schema-viewport');
+    if (!vp) return;
+    const bbox = vp.getBBox();
+    if (!bbox.width || !bbox.height) return;
+    const cw = schemaCanvas.clientWidth;
+    const ch = schemaCanvas.clientHeight;
+    const pad = 60;
+    const scale = Math.min(1, (cw - pad * 2) / bbox.width, (ch - pad * 2) / bbox.height);
+    schemaTransform.scale = scale;
+    schemaTransform.x = cw / 2 - (bbox.x + bbox.width  / 2) * scale;
+    schemaTransform.y = ch / 2 - (bbox.y + bbox.height / 2) * scale;
+    applySchemaTransform();
+}
+
+// Ctrl/pinch → zoom centred on cursor; otherwise → pan
+schemaCanvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    if (e.ctrlKey) {
+        const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+        const rect = schemaCanvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const newScale = Math.max(0.1, Math.min(4, schemaTransform.scale * factor));
+        const actual = newScale / schemaTransform.scale;
+        schemaTransform.x = mx - (mx - schemaTransform.x) * actual;
+        schemaTransform.y = my - (my - schemaTransform.y) * actual;
+        schemaTransform.scale = newScale;
+    } else {
+        schemaTransform.x -= e.deltaX;
+        schemaTransform.y -= e.deltaY;
+    }
+    applySchemaTransform();
+}, { passive: false });
+
+// Clic-glisser sur le vide → pan (seuil 4px pour ne pas casser les clics sur les nœuds)
+(function () {
+    let pending = false, dragging = false, sx = 0, sy = 0, tx = 0, ty = 0;
+    schemaCanvas.addEventListener('mousedown', e => {
+        if (e.button !== 0) return;
+        pending = true;
+        sx = e.clientX; sy = e.clientY;
+        tx = schemaTransform.x; ty = schemaTransform.y;
+    });
+    document.addEventListener('mousemove', e => {
+        if (!pending && !dragging) return;
+        const dx = e.clientX - sx, dy = e.clientY - sy;
+        if (!dragging && Math.hypot(dx, dy) > 4) {
+            dragging = true;
+            schemaCanvas.classList.add('panning');
+        }
+        if (dragging) {
+            e.preventDefault();
+            schemaTransform.x = tx + dx;
+            schemaTransform.y = ty + dy;
+            applySchemaTransform();
+        }
+    });
+    document.addEventListener('mouseup', () => { pending = false; dragging = false; schemaCanvas.classList.remove('panning'); });
+}());
+
+// Double-clic sur le vide → fit to view
+schemaCanvas.addEventListener('dblclick', e => {
+    if (e.target.closest && e.target.closest('[data-schema-card]')) return;
+    fitSchemaToView();
+});
+
+document.getElementById('btn-schema-fit').addEventListener('click', fitSchemaToView);
 
 /**
  * Render the dependency graph as an SVG diagram inside #schema-canvas.
@@ -81,6 +141,30 @@ function buildTooltipHTML(t) {
         if (deps.length) lines.push(row('Binds', deps.map(r => `:${r}`).join(', ')));
     } else if (t.source === 'paste') {
         if (t.columns.length) lines.push(row('Columns', t.columns.join(', ')));
+    } else if (t.source === 'dml') {
+        const cfg = t.dmlConfig || {};
+        const srcName = cfg.sourceTableId ? tblName(cfg.sourceTableId) : '—';
+        lines.push(row('Source', srcName));
+        if (cfg.objectName) lines.push(row('Object', cfg.objectName));
+        if (cfg.operation)  lines.push(row('Operation', cfg.operation.toUpperCase()));
+        const active = (cfg.mappings || []).filter(m => m.included);
+        if (active.length)  lines.push(row('Mappings', active.map(m => `${m.col} → ${m.field}`).join(', ')));
+        if (cfg.externalIdField) lines.push(row('Ext. ID field', cfg.externalIdField));
+        // Last Run Status
+        let status;
+        if (!t.dmlResults) {
+            status = `<span style="color:#555">Never run</span>`;
+        } else {
+            const errors = t.dmlResults.filter(r => !r.success).length;
+            status = errors === 0
+                ? `<span style="color:#4ade80">All OK (${t.dmlResults.length})</span>`
+                : `<span style="color:#f87171">${errors} error${errors !== 1 ? 's' : ''} / ${t.dmlResults.length}</span>`;
+        }
+        lines.push(row('Last run status', status));
+        if (t.dmlLastRun) {
+            const formatted = t.dmlLastRun.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+            lines.push(row('Last run', formatted));
+        }
     } else if (t.recipe) {
         const { op, leftId, rightId, sourceId, leftCol, rightCol } = t.recipe;
         // Resolve column IDs to display names for tooltip
@@ -93,7 +177,36 @@ function buildTooltipHTML(t) {
         else if (op === 'enrich')   lines.push(row('Op', 'Enrich'), row('Base', tblName(leftId)), row('With', tblName(rightId)), row('Key', `${colName(leftId, leftCol)} = ${colName(rightId, rightCol)}`));
         else if (op === 'missing')  lines.push(row('Op', 'Missing'), row('In', tblName(leftId)), row('Not in', tblName(rightId)), row('Key', `${colName(leftId, leftCol)} = ${colName(rightId, rightCol)}`));
         else if (op === 'filter')   lines.push(row('Op', 'Filter'), row('Keep', tblName(leftId)), row('Matching', tblName(rightId)), row('Key', `${colName(leftId, leftCol)} = ${colName(rightId, rightCol)}`));
+        else if (op === 'group') {
+            const gcn = colName(sourceId, t.recipe.groupColId);
+            lines.push(row('Op', 'Group'), row('Source', tblName(sourceId)), row('Group by', gcn));
+        }
     }
+    if (t.lastRun) {
+        const d = new Date(t.lastRun);
+        const formatted = d.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+        lines.push(row('Last run', formatted));
+    }
+
+    const tableRules = colorRules.filter(r => r.tableId === t.id);
+    if (tableRules.length) {
+        const COND_LABELS = {
+            has_records: t.source === 'dml' ? 'Source has records' : 'Has records',
+            no_records:  t.source === 'dml' ? 'Source is empty'   : 'No records',
+            dml_not_run:  'Not yet run', dml_done_ok: 'Last run: all OK', dml_done_err: 'Last run: has errors',
+        };
+        const ruleRows = tableRules.map(r => {
+            const isActive = evalColorRule(t, r, tables);
+            const da = r.borderStyle === 'dashed' ? 'stroke-dasharray="6 3"' : r.borderStyle === 'dotted' ? 'stroke-dasharray="2 3" stroke-linecap="round"' : '';
+            const sw = r.borderStyle === 'dotted' ? '3' : '2.5';
+            const svg = `<svg width="24" height="10" style="vertical-align:middle;flex-shrink:0"><line x1="2" y1="5" x2="22" y2="5" stroke="${r.color}" stroke-width="${sw}" ${da}/></svg>`;
+            const check = isActive ? `<span style="color:${r.color};font-size:10px">✓</span>` : `<span style="color:#444;font-size:10px">·</span>`;
+            const label = `<span style="color:${isActive ? '#bbb' : '#555'};font-size:11px">${COND_LABELS[r.condition] || r.condition}</span>`;
+            return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0">${check}${svg}${label}</div>`;
+        }).join('');
+        lines.push(`<div class="schema-tooltip-row" style="flex-direction:column;align-items:flex-start;gap:0"><span class="schema-tooltip-label">Rules</span>${ruleRows}</div>`);
+    }
+
     return lines.join('') || `<span style="color:#444">No details</span>`;
 }
 
@@ -105,7 +218,83 @@ function hasDependents(tableEntry) {
     return false;
 }
 
+// ── Schema colour constants (module-scope so renderLegend can access them) ──
+const ACCENT = { paste: '#4ade80', soql: '#60a5fa', result: '#a855f7', dml: '#ef4444' };
+const ACCENT_DIM = { paste: '#14532d', soql: '#1e3a5f', result: '#2e1065', dml: '#450a0a' };
+const OP_ACCENT = {
+    enrich: '#22d3ee', filter: '#f59e0b', missing: '#f87171',
+    stack: '#818cf8', group: '#34d399', split: '#f472b6', transform: '#fb923c'
+};
+const OP_ACCENT_DIM = {
+    enrich: '#0a2a38', filter: '#2a1a00', missing: '#2a0a0a',
+    stack: '#1a1a40', group: '#0a2a1a', split: '#2a0a1a', transform: '#2a1000'
+};
+
+function renderLegend() {
+    const el = document.getElementById('schema-legend');
+    if (!el) return;
+    el.innerHTML = '';
+
+    function makeDot(color) {
+        const dot = document.createElement('span');
+        dot.className = 'schema-legend-dot';
+        dot.style.background = color;
+        return dot;
+    }
+    function makeItem(color, label) {
+        const item = document.createElement('span');
+        item.className = 'schema-legend-item';
+        item.append(makeDot(color), label);
+        return item;
+    }
+
+    // Collect which types/ops are present
+    const hasPaste  = tables.some(t => t.source === 'paste');
+    const hasSoql   = tables.some(t => t.source === 'soql');
+    const hasDml    = tables.some(t => t.source === 'dml');
+    const opsPresent = new Set(
+        tables.filter(t => t.source === 'result' && t.recipe?.op && OP_ACCENT[t.recipe.op])
+              .map(t => t.recipe.op)
+    );
+    const hasPlainResult = tables.some(
+        t => t.source === 'result' && (!t.recipe?.op || !OP_ACCENT[t.recipe?.op])
+    );
+
+    // Source types
+    if (hasPaste)  el.appendChild(makeItem(ACCENT.paste, 'Paste'));
+    if (hasSoql)   el.appendChild(makeItem(ACCENT.soql,  'SOQL'));
+    if (hasDml)    el.appendChild(makeItem(ACCENT.dml,   'DML'));
+
+    // Plain result
+    if (hasPlainResult) el.appendChild(makeItem(ACCENT.result, 'Result'));
+
+    // Result ops (in a stable order)
+    ['enrich','filter','missing','stack','group','split','transform'].forEach(op => {
+        if (!opsPresent.has(op)) return;
+        el.appendChild(makeItem(OP_ACCENT[op], OP_LABELS[op] || op));
+    });
+
+    // SOQL binding indicator — only if SOQL tables exist (they can be referenced)
+    if (hasSoql) {
+        const sep = document.createElement('span');
+        sep.className = 'schema-legend-item';
+        sep.style.cssText = 'margin-left:8px;border-left:1px solid #2a2a2a;padding-left:14px;';
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', '22'); svg.setAttribute('height', '10');
+        svg.style.flexShrink = '0';
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1','0'); line.setAttribute('y1','5');
+        line.setAttribute('x2','22'); line.setAttribute('y2','5');
+        line.setAttribute('stroke','#555'); line.setAttribute('stroke-width','1.5');
+        line.setAttribute('stroke-dasharray','4 3');
+        svg.appendChild(line);
+        sep.append(svg, ' SOQL binding');
+        el.appendChild(sep);
+    }
+}
+
 function renderSchema() {
+    renderLegend();
     schemaTooltip.classList.add('hidden');
     schemaCanvas.innerHTML = '';
 
@@ -125,6 +314,7 @@ function renderSchema() {
         return [...refs].map(ref => tables.find(u => u.ref === ref)?.id).filter(Boolean);
     }
     function getAllDeps(t) {
+        if (t.source === 'dml') return t.dmlConfig?.sourceTableId ? [t.dmlConfig.sourceTableId] : [];
         return t.recipe ? getDependencies(t.recipe) : getSoqlDeps(t);
     }
 
@@ -216,8 +406,47 @@ function renderSchema() {
         });
     });
 
+    // ── Enforce distinct Y levels for split siblings ──
+    // Split siblings can land in different columns (leaf-push rule applies), but must
+    // never share the same Y position so each appears at a visually distinct height.
+    {
+        const splitGroups = new Map();
+        tables.forEach(t => {
+            const gid = t.recipe?.splitGroupId;
+            if (t.recipe?.op === 'split' && gid) {
+                if (!splitGroups.has(gid)) splitGroups.set(gid, []);
+                splitGroups.get(gid).push(t);
+            }
+        });
+        splitGroups.forEach(siblings => {
+            if (siblings.length < 2) return;
+            // Stable sort by Y, break ties by id for determinism
+            siblings.sort((a, b) => {
+                const dy = positions.get(a.id).y - positions.get(b.id).y;
+                return dy !== 0 ? dy : a.id.localeCompare(b.id);
+            });
+            for (let i = 1; i < siblings.length; i++) {
+                const prev = positions.get(siblings[i - 1].id);
+                const cur  = positions.get(siblings[i].id);
+                const needed = prev.y + NODE_H + V_GAP;
+                if (cur.y < needed) {
+                    const delta = needed - cur.y;
+                    const lid = layerOf.get(siblings[i].id);
+                    // Shift this node and all nodes below it in its column downward
+                    (layers.get(lid) || []).forEach(n => {
+                        const p = positions.get(n.id);
+                        if (p && p.y >= cur.y) positions.set(n.id, { ...p, y: p.y + delta });
+                    });
+                }
+            }
+        });
+    }
+
+    // Recompute actual SVG bounds after potential Y adjustments
+    let maxY = 0;
+    positions.forEach(p => { maxY = Math.max(maxY, p.y + p.h); });
     const svgW = PAD + sortedLayers.length * (NODE_W + H_GAP) - H_GAP + PAD;
-    const svgH = PAD * 2 + maxColH;
+    const svgH = maxY + PAD;
 
     // ── Build edges: recipe deps (solid) + SOQL bindings (dashed) ──
     const edges = [];
@@ -232,6 +461,7 @@ function renderSchema() {
     tables.forEach(t => {
         if (t.recipe) getDependencies(t.recipe).forEach(depId => addEdge(depId, t.id, 'solid'));
         getSoqlDeps(t).forEach(depId => addEdge(depId, t.id, 'binding'));
+        if (t.source === 'dml' && t.dmlConfig?.sourceTableId) addEdge(t.dmlConfig.sourceTableId, t.id, 'solid');
     });
 
     // ── Spread endpoints so stacked edges don't overlap ──
@@ -253,12 +483,14 @@ function renderSchema() {
         outgoingIdx.set(e.fromId, oi + 1);
     });
 
+    const shouldFit = schemaTransform.x === 0 && schemaTransform.y === 0 && schemaTransform.scale === 1;
+
     // ── SVG ──
     const NS = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(NS, 'svg');
-    svg.setAttribute('width', svgW);
-    svg.setAttribute('height', svgH);
-    svg.setAttribute('viewBox', `0 0 ${svgW} ${svgH}`);
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '100%');
+    svg.style.display = 'block';
 
     // Arrowhead marker + clipPath storage in defs
     const defs = document.createElementNS(NS, 'defs');
@@ -274,12 +506,11 @@ function renderSchema() {
     arrowPoly.setAttribute('fill', '#505050');
     marker.appendChild(arrowPoly);
 
-    // Per-source accent colours
-    const ACCENT = { paste: '#4ade80', soql: '#60a5fa', result: '#a855f7' };
-    const ACCENT_DIM = { paste: '#14532d', soql: '#1e3a5f', result: '#2e1065' };
 
-    // Per-colour arrowhead markers (one per source type)
-    Object.entries({ ...ACCENT, dim: '#383838' }).forEach(([key, color]) => {
+    // Per-colour arrowhead markers (one per source type + per op)
+    const ALL_MARKERS = { ...ACCENT, dim: '#383838' };
+    Object.entries(OP_ACCENT).forEach(([k, v]) => { ALL_MARKERS[`result-${k}`] = v; });
+    Object.entries(ALL_MARKERS).forEach(([key, color]) => {
         const m = document.createElementNS(NS, 'marker');
         m.setAttribute('id', `schema-arrow-${key}`);
         m.setAttribute('markerWidth', '9'); m.setAttribute('markerHeight', '7');
@@ -292,8 +523,23 @@ function renderSchema() {
         defs.appendChild(m);
     });
 
+    function tableAccentKey(tbl) {
+        if (!tbl) return 'dim';
+        const o = tbl.source === 'result' ? tbl.recipe?.op : null;
+        return (o && OP_ACCENT[o]) ? `result-${o}` : (tbl.source || 'dim');
+    }
+    function tableAccentColor(tbl) {
+        if (!tbl) return '#505050';
+        const o = tbl.source === 'result' ? tbl.recipe?.op : null;
+        return (o && OP_ACCENT[o]) ? OP_ACCENT[o] : (ACCENT[tbl.source] || ACCENT.result);
+    }
+
     defs.appendChild(marker);
     svg.appendChild(defs);
+
+    const viewport = document.createElementNS(NS, 'g');
+    viewport.setAttribute('id', 'schema-viewport');
+    svg.appendChild(viewport);
 
     // ── Shared highlight helpers (closures over edgePaths / nodeGroups) ──
     let lockedId = null;
@@ -370,7 +616,7 @@ function renderSchema() {
     // Group to hold all edges so we can dim them on hover
     const edgeGroup = document.createElementNS(NS, 'g');
     edgeGroup.setAttribute('class', 'schema-edges');
-    svg.appendChild(edgeGroup);
+    viewport.appendChild(edgeGroup);
 
     // Draw bezier edges (drawn before nodes so they appear behind)
     edges.forEach(edge => {
@@ -383,8 +629,9 @@ function renderSchema() {
         const fromTable = tables.find(u => u.id === fromId);
         const isBinding = style === 'binding';
         // Binding edges use the DESTINATION (SOQL) node colour; solid edges use source colour
-        const toTable = isBinding ? tables.find(u => u.id === toId) : null;
-        const edgeColor = isBinding ? (ACCENT[toTable?.source] || '#505050') : (ACCENT[fromTable?.source] || '#505050');
+        const toTable = tables.find(u => u.id === toId);
+        const refTable = isBinding ? toTable : fromTable;
+        const edgeColor = tableAccentColor(refTable);
         const d = `M ${x1} ${y1} C ${cx} ${y1}, ${cx} ${y2}, ${x2} ${y2}`;
         const halo = document.createElementNS(NS, 'path');
         halo.setAttribute('d', d);
@@ -399,8 +646,7 @@ function renderSchema() {
         path.setAttribute('fill', 'none');
         path.setAttribute('opacity', '0.55');
         if (isBinding) path.setAttribute('stroke-dasharray', '4 3');
-        const markerSrc = isBinding ? (toTable?.source || 'dim') : (fromTable?.source || 'dim');
-        path.setAttribute('marker-end', `url(#schema-arrow-${markerSrc})`);
+        path.setAttribute('marker-end', `url(#schema-arrow-${tableAccentKey(refTable)})`);
         path.dataset.from = fromId;
         path.dataset.to   = toId;
         edgeGroup.appendChild(path);
@@ -410,8 +656,9 @@ function renderSchema() {
     // Draw nodes
     tables.forEach(t => {
         const pos  = positions.get(t.id);
-        const acc  = ACCENT[t.source]    || ACCENT.result;
-        const dim  = ACCENT_DIM[t.source] || ACCENT_DIM.result;
+        const nodeOp = t.source === 'result' ? t.recipe?.op : null;
+        const acc  = tableAccentColor(t);
+        const dim  = (nodeOp && OP_ACCENT_DIM[nodeOp]) ? OP_ACCENT_DIM[nodeOp] : (ACCENT_DIM[t.source] || ACCENT_DIM.result);
         const BAR  = 5;   // left accent bar width
         const R    = 7;   // corner radius
 
@@ -432,9 +679,12 @@ function renderSchema() {
         card.setAttribute('fill', '#1e1e1e');
         card.setAttribute('data-schema-card', t.id);
         // Apply color rule border if any matching rule is active
-        const activeRule = colorRules.find(r => r.tableId === t.id && evalColorRule(t, r));
+        const activeRule = colorRules.find(r => r.tableId === t.id && evalColorRule(t, r, tables));
         card.setAttribute('stroke', activeRule ? activeRule.color : '#303030');
         card.setAttribute('stroke-width', activeRule ? '2.5' : '1');
+        if (activeRule?.borderStyle === 'dashed') card.setAttribute('stroke-dasharray', '8 4');
+        else if (activeRule?.borderStyle === 'dotted') { card.setAttribute('stroke-dasharray', '2 4'); card.setAttribute('stroke-linecap', 'round'); }
+        else card.removeAttribute('stroke-dasharray');
         g.appendChild(card);
 
         // ── Lock ring (visible when this node is pinned) ──
@@ -466,7 +716,7 @@ function renderSchema() {
 
         // ── Source type label (coloured, small caps) ──
         const OFFSET = BAR + 10;
-        const sourceLabel = t.source === 'paste' ? 'Paste' : t.source === 'soql' ? 'SOQL' : 'Result';
+        const sourceLabel = t.source === 'paste' ? 'Paste' : t.source === 'soql' ? 'SOQL' : t.source === 'dml' ? 'DML' : (OP_LABELS[t.recipe?.op] || 'Result');
         const typeEl = document.createElementNS(NS, 'text');
         typeEl.setAttribute('x', OFFSET); typeEl.setAttribute('y', '17');
         typeEl.setAttribute('fill', acc);
@@ -476,6 +726,19 @@ function renderSchema() {
         typeEl.setAttribute('letter-spacing', '1');
         typeEl.textContent = sourceLabel.toUpperCase();
         g.appendChild(typeEl);
+
+        // ── Snapshot indicator (right of source label) ──
+        if (t.isSnapshot) {
+            const snapEl = document.createElementNS(NS, 'text');
+            snapEl.setAttribute('x', '75'); snapEl.setAttribute('y', '17');
+            snapEl.setAttribute('fill', '#a78bfa');
+            snapEl.setAttribute('font-size', '9');
+            snapEl.setAttribute('font-family', 'monospace');
+            snapEl.setAttribute('font-weight', '700');
+            snapEl.setAttribute('letter-spacing', '1');
+            snapEl.textContent = '· SNAP';
+            g.appendChild(snapEl);
+        }
 
         // ── Op type pill for results (top-right) ──
         if (t.recipe && t.recipe.op) {
@@ -542,36 +805,62 @@ function renderSchema() {
         nameEl.textContent = displayName;
         g.appendChild(nameEl);
 
-        // ── Row count (live reference — updated by refresh) ──
-        const rowEl = document.createElementNS(NS, 'text');
-        rowEl.setAttribute('x', OFFSET); rowEl.setAttribute('y', '54');
-        rowEl.setAttribute('fill', '#5a5a5a');
-        rowEl.setAttribute('font-size', '10');
-        rowEl.setAttribute('font-family', 'sans-serif');
-        rowEl.setAttribute('data-schema-row', t.id);
-        rowEl.textContent = `${t.rows.length} row${t.rows.length !== 1 ? 's' : ''}`;
-        g.appendChild(rowEl);
+        if (t.source === 'dml') {
+            // ── DML: show source table name + object · operation ──
+            const srcTable = tables.find(x => x.id === t.dmlConfig?.sourceTableId);
+            const srcName = srcTable ? srcTable.name : '—';
+            const truncSrc = srcName.length > 28 ? srcName.slice(0, 26) + '…' : srcName;
+            const srcEl = document.createElementNS(NS, 'text');
+            srcEl.setAttribute('x', OFFSET); srcEl.setAttribute('y', '54');
+            srcEl.setAttribute('fill', '#5a5a5a');
+            srcEl.setAttribute('font-size', '10');
+            srcEl.setAttribute('font-family', 'sans-serif');
+            srcEl.textContent = `↑ ${truncSrc}`;
+            g.appendChild(srcEl);
 
-        // ── Column count ──
-        const colEl = document.createElementNS(NS, 'text');
-        colEl.setAttribute('x', String(pos.w - 8)); colEl.setAttribute('y', '54');
-        colEl.setAttribute('fill', '#3a3a3a');
-        colEl.setAttribute('font-size', '10');
-        colEl.setAttribute('font-family', 'sans-serif');
-        colEl.setAttribute('text-anchor', 'end');
-        colEl.textContent = `${t.columns.length} col${t.columns.length !== 1 ? 's' : ''}`;
-        g.appendChild(colEl);
+            const objName = t.dmlConfig?.objectName || '—';
+            const op = t.dmlConfig?.operation || '—';
+            const objStr = `${objName} · ${op}`;
+            const truncObj = objStr.length > 30 ? objStr.slice(0, 28) + '…' : objStr;
+            const objEl = document.createElementNS(NS, 'text');
+            objEl.setAttribute('x', OFFSET); objEl.setAttribute('y', '66');
+            objEl.setAttribute('fill', '#ef4444');
+            objEl.setAttribute('font-size', '9');
+            objEl.setAttribute('font-family', 'monospace');
+            objEl.textContent = truncObj;
+            g.appendChild(objEl);
+        } else {
+            // ── Row count (live reference — updated by refresh) ──
+            const rowEl = document.createElementNS(NS, 'text');
+            rowEl.setAttribute('x', OFFSET); rowEl.setAttribute('y', '54');
+            rowEl.setAttribute('fill', '#5a5a5a');
+            rowEl.setAttribute('font-size', '10');
+            rowEl.setAttribute('font-family', 'sans-serif');
+            rowEl.setAttribute('data-schema-row', t.id);
+            rowEl.textContent = `${t.rows.length} row${t.rows.length !== 1 ? 's' : ''}`;
+            g.appendChild(rowEl);
 
-        // ── Ref (monospace) ──
-        const refStr = `:${t.ref}`;
-        const displayRef = refStr.length > 26 ? refStr.slice(0, 24) + '…' : refStr;
-        const refEl = document.createElementNS(NS, 'text');
-        refEl.setAttribute('x', OFFSET); refEl.setAttribute('y', '66');
-        refEl.setAttribute('fill', '#454545');
-        refEl.setAttribute('font-size', '9');
-        refEl.setAttribute('font-family', 'monospace');
-        refEl.textContent = displayRef;
-        g.appendChild(refEl);
+            // ── Column count ──
+            const colEl = document.createElementNS(NS, 'text');
+            colEl.setAttribute('x', String(pos.w - 8)); colEl.setAttribute('y', '54');
+            colEl.setAttribute('fill', '#3a3a3a');
+            colEl.setAttribute('font-size', '10');
+            colEl.setAttribute('font-family', 'sans-serif');
+            colEl.setAttribute('text-anchor', 'end');
+            colEl.textContent = `${t.columns.length} col${t.columns.length !== 1 ? 's' : ''}`;
+            g.appendChild(colEl);
+
+            // ── Ref (monospace) ──
+            const refStr = `:${t.ref}`;
+            const displayRef = refStr.length > 26 ? refStr.slice(0, 24) + '…' : refStr;
+            const refEl = document.createElementNS(NS, 'text');
+            refEl.setAttribute('x', OFFSET); refEl.setAttribute('y', '66');
+            refEl.setAttribute('fill', '#454545');
+            refEl.setAttribute('font-size', '9');
+            refEl.setAttribute('font-family', 'monospace');
+            refEl.textContent = displayRef;
+            g.appendChild(refEl);
+        }
 
         // ── Action bar: divider + Edit + Refresh buttons ──
         const ACTION_Y = 70;
@@ -640,6 +929,8 @@ function renderSchema() {
                 openResultPanelForEdit(t);
             } else if (t.source === 'soql') {
                 openAddPanelForSoqlEdit(t);
+            } else if (t.source === 'dml') {
+                openDmlPanelForEdit(t);
             } else {
                 openAddPanelForPasteEdit(t);
             }
@@ -658,7 +949,7 @@ function renderSchema() {
         const { grp: refreshGrp, txt: refreshTxt } = makeSvgBtn(SEP2, pos.w - SEP2, '↻', 'Refresh this table');
         refreshTxt.setAttribute('data-refresh-for', t.id);
         if (t.stale) refreshTxt.setAttribute('fill', '#fbbf24');
-        if (t.source === 'paste') {
+        if (t.source === 'paste' || t.source === 'dml') {
             refreshTxt.setAttribute('fill', '#2a2a2a');
             refreshGrp.style.cursor = 'default';
             refreshGrp.replaceWith(refreshGrp); // keep in DOM but non-interactive via override
@@ -674,14 +965,16 @@ function renderSchema() {
                         if (errors.length > 0) { showToast(errors.join(' · '), 'error', 0); return; }
                         const result = await window.electronAPI.runDataWorkbenchSoql({ query: resolved, orgIdentifier: t.orgIdentifier });
                         if (result.error) { showToast(result.error, 'error', 0); return; }
+                        if (result.rows.length === 0) showToast(`${t.name}: query returned 0 rows — columns preserved`, 'info', 5000);
                         t.rows = result.rows;
                         const removedS = applyColumnRenames(t, result.columns);
                         markBrokenReferences(t.id, removedS);
                         markDependentsStale(t.id);
                     } else {
                         const recipeResult = computeFromRecipe(t.recipe);
-                        t.columns    = recipeResult.columns;
-                        t.columnDefs = recipeResult.columnDefs;
+                        const mergedDefs = preserveResultRenames(t.columnDefs, recipeResult.columnDefs);
+                        t.columnDefs = mergedDefs;
+                        t.columns    = mergedDefs.map(d => d.name);
                         t.rows       = recipeResult.rows.map(r => [...r]);
                         t.stale      = false;
                         document.querySelector(`[data-stale-badge="${t.id}"]`)?.remove();
@@ -794,6 +1087,7 @@ function renderSchema() {
             g.appendChild(cascadeGrp);
         }
 
+        viewport.appendChild(g);
         nodeGroups.push({ id: t.id, g });
 
         // ── Hover: highlight connected nodes/edges (respects pin lock) ──
@@ -818,20 +1112,83 @@ function renderSchema() {
             schemaTooltip.classList.add('hidden');
         });
 
-        svg.appendChild(g);
     });
 
     schemaCanvas.appendChild(svg);
+    applySchemaTransform();
+    if (shouldFit) setTimeout(fitSchemaToView, 0);
+}
+
+// Renders the DML config <dl> into a container
+function _renderDmlConfigDl(tableEntry, container) {
+    const cfg = tableEntry.dmlConfig || {};
+    const srcTable = tables.find(t => t.id === cfg.sourceTableId);
+    const dl = document.createElement('dl');
+    dl.className = 'dml-preview-config';
+    function addRow(k, v) {
+        const dt = document.createElement('dt'); dt.textContent = k;
+        const dd = document.createElement('dd'); dd.textContent = v || '—';
+        dl.append(dt, dd);
+    }
+    addRow('Source', srcTable ? `${srcTable.name} (${srcTable.rows.length} rows)` : '⚠ table not found');
+    addRow('Org', cfg.orgIdentifier || '—');
+    addRow('Object', cfg.objectName || '—');
+    addRow('Operation', (cfg.operation || '—').toUpperCase());
+    if (cfg.operation === 'upsert') addRow('External ID', cfg.externalIdField || '—');
+    if (cfg.allOrNone) addRow('All or none', 'ON — any failure rolls back all');
+    const active = (cfg.mappings || []).filter(m => m.included);
+    addRow('Mappings', active.map(m => `${m.col} → ${m.field}`).join('  ·  ') || '—');
+    container.appendChild(dl);
+}
+
+// Builds a merged table with all result cells in "pending" state, returns { wrap, tbody }
+function _buildPendingMergedTable(srcTable) {
+    const wrap = document.createElement('div');
+    wrap.className = 'table-wrapper';
+    const table = document.createElement('table');
+    table.className = 'data-table dml-merged-table';
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    srcTable.columns.forEach(col => {
+        const th = document.createElement('th'); th.textContent = col; headRow.appendChild(th);
+    });
+    const thResult = document.createElement('th');
+    thResult.className = 'dml-result-th'; thResult.textContent = 'Result';
+    headRow.appendChild(thResult);
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    srcTable.rows.forEach(row => {
+        const tr = document.createElement('tr');
+        row.forEach(cell => {
+            const td = document.createElement('td'); td.textContent = cell ?? ''; tr.appendChild(td);
+        });
+        const tdResult = document.createElement('td');
+        tdResult.className = 'dml-result-cell dml-result-pending';
+        tdResult.textContent = '⏳';
+        tr.appendChild(tdResult);
+        tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    return { wrap, tbody };
 }
 
 function openSchemaPreview(tableEntry) {
+    if (typeof resetDeleteConfirm === 'function') resetDeleteConfirm();
     schemaPreviewError.classList.remove('visible');
     schemaPreview.dataset.tableId = tableEntry.id;
     schemaPreviewTitle.textContent = tableEntry.name;
-    schemaPreviewBadge.className = `schema-preview-badge ${tableEntry.source}`;
-    schemaPreviewBadge.textContent = tableEntry.source.toUpperCase();
-    const d = tableEntry.rows.length, tot = tableEntry.totalSize || d;
-    schemaPreviewMeta.textContent = tot > d ? `${d} / ${tot} rows · ${tableEntry.columns.length} cols` : `${d} row${d !== 1 ? 's' : ''} · ${tableEntry.columns.length} cols`;
+    const previewOp = tableEntry.source === 'result' && tableEntry.recipe?.op ? tableEntry.recipe.op : null;
+    schemaPreviewBadge.className = previewOp ? `schema-preview-badge result-${previewOp}` : `schema-preview-badge ${tableEntry.source}`;
+    schemaPreviewBadge.textContent = previewOp ? (OP_LABELS[previewOp] || 'RESULT') : tableEntry.source.toUpperCase();
+    if (tableEntry.source === 'dml') {
+        const cfg = tableEntry.dmlConfig || {};
+        schemaPreviewMeta.textContent = `${cfg.objectName || '?'} · ${(cfg.operation || '').toUpperCase()}`;
+    } else {
+        const d = tableEntry.rows.length, tot = tableEntry.totalSize || d;
+        schemaPreviewMeta.textContent = tot > d ? `${d} / ${tot} rows · ${tableEntry.columns.length} cols` : `${d} row${d !== 1 ? 's' : ''} · ${tableEntry.columns.length} cols`;
+    }
 
     // Description — always visible, inline editable
     schemaPreviewDesc.textContent = tableEntry.description || '';
@@ -855,23 +1212,275 @@ function openSchemaPreview(tableEntry) {
 
     const existing = schemaPreview.querySelector('.schema-preview-exports');
     if (existing) existing.remove();
-    if (tableEntry.rows.length > 0) {
+    const existingDmlRun = schemaPreview.querySelector('.dml-preview-run-group');
+    if (existingDmlRun) existingDmlRun.remove();
+    const existingSoqlRerun = schemaPreview.querySelector('.soql-preview-rerun-group');
+    if (existingSoqlRerun) existingSoqlRerun.remove();
+    if (tableEntry.source === 'dml') {
+        const runGroup = document.createElement('div');
+        runGroup.className = 'dml-preview-run-group';
+        const runBtn = document.createElement('button');
+        runBtn.className = 'btn-primary dml-preview-run-btn';
+        const cfg = tableEntry.dmlConfig || {};
+        const opLabel = (cfg.operation || 'run').charAt(0).toUpperCase() + (cfg.operation || 'run').slice(1);
+        runBtn.textContent = `▶ ${opLabel}`;
+        const srcForBtn = tables.find(t => t.id === cfg.sourceTableId);
+        const srcCount = srcForBtn ? srcForBtn.rows.length : 0;
+        if (srcCount === 0) {
+            runBtn.disabled = true;
+            runBtn.title = 'Source table has no rows';
+        }
+        const runErr = document.createElement('span');
+        runErr.className = 'panel-error dml-preview-run-err';
+        runBtn.addEventListener('click', async () => {
+            runErr.classList.remove('visible');
+            runBtn.disabled = true;
+
+            const srcTable = tables.find(t => t.id === (tableEntry.dmlConfig || {}).sourceTableId);
+            const totalBatches = srcTable ? Math.ceil(srcTable.rows.length / ((tableEntry.dmlConfig.batchSize || 200))) : 1;
+
+            // Render pending table immediately so rows are visible while running
+            schemaPreviewBody.innerHTML = '';
+            _renderDmlConfigDl(tableEntry, schemaPreviewBody);
+            const pendingHeader = document.createElement('p');
+            pendingHeader.className = 'dml-preview-src-header';
+            pendingHeader.id = 'dml-progress-header';
+            pendingHeader.textContent = `Running… (0 / ${totalBatches} batch${totalBatches > 1 ? 'es' : ''})`;
+            schemaPreviewBody.appendChild(pendingHeader);
+
+            let progressTbody = null;
+            if (srcTable && srcTable.rows.length > 0) {
+                const { wrap, tbody } = _buildPendingMergedTable(srcTable);
+                schemaPreviewBody.appendChild(wrap);
+                progressTbody = tbody;
+            }
+
+            runBtn.textContent = `0 / ${totalBatches}`;
+
+            let batchesDone = 0;
+            const partialResults = [];
+
+            try {
+                const result = await executeDml(tableEntry, ({ batchIndex, results }) => {
+                    batchesDone++;
+                    results.forEach(r => { partialResults[r.index] = r; });
+                    // Update cells for this batch
+                    if (progressTbody) {
+                        results.forEach(r => {
+                            const tr = progressTbody.rows[r.index];
+                            if (!tr) return;
+                            const td = tr.lastElementChild;
+                            if (r.success) {
+                                tr.className = 'dml-row-ok';
+                                td.className = 'dml-result-cell dml-result-ok';
+                                td.textContent = `✓ ${r.id || ''}`;
+                            } else {
+                                tr.className = 'dml-row-err';
+                                td.className = 'dml-result-cell dml-result-err';
+                                const msg = (r.errors || []).map(e => e.message || e.statusCode || '').join('; ') || 'Error';
+                                td.textContent = `✕ ${msg}`;
+                                td.title = msg;
+                            }
+                        });
+                    }
+                    const h = document.getElementById('dml-progress-header');
+                    if (h) h.textContent = `Running… (${batchesDone} / ${totalBatches} batch${totalBatches > 1 ? 'es' : ''})`;
+                    runBtn.textContent = `${batchesDone} / ${totalBatches}`;
+                });
+
+                if (!result.success) {
+                    runErr.textContent = result.error || 'DML failed.';
+                    runErr.classList.add('visible');
+                    const h = document.getElementById('dml-progress-header');
+                    if (h) h.textContent = 'Failed';
+                } else {
+                    tableEntry.dmlStatus  = 'done';
+                    tableEntry.dmlResults = result.results;
+                    tableEntry.dmlLastRun = new Date();
+                    _dmlToast(tableEntry, result);
+                    openSchemaPreview(tableEntry);
+                }
+            } catch (err) {
+                runErr.textContent = err.message || 'Unexpected error.';
+                runErr.classList.add('visible');
+            } finally {
+                runBtn.disabled = false;
+                runBtn.textContent = `▶ ${opLabel}`;
+                renderSchema();
+            }
+        });
+        runGroup.append(runErr, runBtn);
+        document.getElementById('schema-preview-close').insertAdjacentElement('beforebegin', runGroup);
+    } else if (tableEntry.source === 'soql' && tableEntry.soqlQuery) {
+        const rerunGroup = document.createElement('div');
+        rerunGroup.className = 'soql-preview-rerun-group';
+        const rerunBtn = document.createElement('button');
+        rerunBtn.className = 'btn-primary soql-preview-rerun-btn';
+        rerunBtn.textContent = '↻ Re-run';
+        const rerunErr = document.createElement('span');
+        rerunErr.className = 'panel-error dml-preview-run-err';
+        rerunBtn.addEventListener('click', async () => {
+            rerunErr.classList.remove('visible');
+            rerunBtn.disabled = true;
+            rerunBtn.textContent = 'Running…';
+            try {
+                const { resolved, errors } = resolveTableRefs(tableEntry.soqlQuery);
+                if (errors.length > 0) {
+                    rerunErr.textContent = errors.join(' · ');
+                    rerunErr.classList.add('visible');
+                    return;
+                }
+                const result = await window.electronAPI.runDataWorkbenchSoql({ query: resolved, orgIdentifier: tableEntry.orgIdentifier });
+                if (result.error) {
+                    rerunErr.textContent = result.error;
+                    rerunErr.classList.add('visible');
+                } else {
+                    if (result.rows.length === 0) showToast(`${tableEntry.name}: query returned 0 rows — columns preserved`, 'info', 5000);
+                    tableEntry.rows = result.rows;
+                    tableEntry.totalSize = result.totalSize;
+                    const removedS = applyColumnRenames(tableEntry, result.columns);
+                    markBrokenReferences(tableEntry.id, removedS);
+                    markDependentsStale(tableEntry.id);
+                    openSchemaPreview(tableEntry);
+                    renderSchema();
+                }
+            } catch (err) {
+                rerunErr.textContent = err.message || 'Unexpected error.';
+                rerunErr.classList.add('visible');
+            } finally {
+                rerunBtn.disabled = false;
+                rerunBtn.textContent = '↻ Re-run';
+            }
+        });
+        rerunGroup.append(rerunErr, rerunBtn);
+        document.getElementById('schema-preview-close').insertAdjacentElement('beforebegin', rerunGroup);
+        if (tableEntry.rows.length > 0) {
+            const group = document.createElement('div');
+            group.className = 'schema-preview-exports';
+            group.append(...buildExportButtons(tableEntry));
+            document.getElementById('schema-preview-close').insertAdjacentElement('beforebegin', group);
+        }
+    } else if (tableEntry.rows.length > 0) {
         const group = document.createElement('div');
         group.className = 'schema-preview-exports';
         group.append(...buildExportButtons(tableEntry));
         document.getElementById('schema-preview-close').insertAdjacentElement('beforebegin', group);
     }
     schemaPreviewBody.innerHTML = '';
-    if (tableEntry.rows.length === 0) {
+    if (tableEntry.source === 'dml') {
+        const cfg = tableEntry.dmlConfig || {};
+        const srcTable = tables.find(t => t.id === cfg.sourceTableId);
+        _renderDmlConfigDl(tableEntry, schemaPreviewBody);
+
+        const activeCols = new Set((cfg.mappings || []).filter(m => m.included).map(m => m.col));
+
+        if (!srcTable || srcTable.rows.length === 0) {
+            const hint = document.createElement('p');
+            hint.className = 'schema-preview-empty';
+            hint.textContent = 'Source table is empty — run the source query first.';
+            schemaPreviewBody.appendChild(hint);
+        } else if (tableEntry.dmlResults && tableEntry.dmlResults.length === srcTable.rows.length) {
+            // Merged view: source rows + inline result per row
+            renderDmlMergedTable(schemaPreviewBody, srcTable, tableEntry.dmlResults, tableEntry.dmlLastRun, activeCols);
+        } else {
+            // Pre-run view: source rows with inactive columns dimmed
+            const srcHeader = document.createElement('p');
+            srcHeader.className = 'dml-preview-src-header';
+            srcHeader.textContent = `Records to ${(cfg.operation || 'send').toUpperCase()} (${srcTable.rows.length})`;
+            schemaPreviewBody.appendChild(srcHeader);
+            const wrap = document.createElement('div');
+            wrap.className = 'table-wrapper';
+            const tbl = document.createElement('table');
+            tbl.className = 'data-table dml-merged-table';
+            const thead = document.createElement('thead');
+            const headRow = document.createElement('tr');
+            srcTable.columns.forEach(col => {
+                const th = document.createElement('th');
+                th.textContent = col;
+                if (!activeCols.has(col)) th.classList.add('dml-col-inactive');
+                headRow.appendChild(th);
+            });
+            thead.appendChild(headRow);
+            tbl.appendChild(thead);
+            const tbody = document.createElement('tbody');
+            srcTable.rows.forEach(row => {
+                const tr = document.createElement('tr');
+                row.forEach((cell, ci) => {
+                    const td = document.createElement('td');
+                    td.textContent = cell ?? '';
+                    if (!activeCols.has(srcTable.columns[ci])) td.classList.add('dml-col-inactive');
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+            tbl.appendChild(tbody);
+            wrap.appendChild(tbl);
+            schemaPreviewBody.appendChild(wrap);
+        }
+    } else if (tableEntry.rows.length === 0) {
         const msg = document.createElement('p');
         msg.className = 'schema-preview-empty';
-        msg.textContent = tableEntry.source === 'soql' ? 'No data — use ↻ Refresh to run the query.' : 'No data — use ↻ Refresh to compute.';
+        msg.textContent = tableEntry.source === 'soql' ? 'No data — use ↻ Re-run to execute the query.'
+            : 'No data — use ↻ Refresh to compute.';
         schemaPreviewBody.appendChild(msg);
     } else {
         const wrap = document.createElement('div');
         wrap.className = 'table-wrapper';
-        renderTableBody(wrap, tableEntry);
+        renderTableBody(wrap, tableEntry, { reorderable: true });
         schemaPreviewBody.appendChild(wrap);
     }
     schemaPreview.classList.remove('hidden');
+
+    // ── Search setup ──
+
+    const searchBar    = document.getElementById('schema-preview-search');
+    const searchToggle = document.getElementById('schema-search-toggle');
+    const searchInput  = document.getElementById('schema-search-input');
+    const searchCount  = document.getElementById('schema-search-count');
+    const searchClear  = document.getElementById('schema-search-clear');
+
+    // Reset state when opening a (possibly different) table
+    searchBar.classList.add('hidden');
+    searchToggle.classList.remove('active');
+    searchInput.value = '';
+    searchCount.textContent = '';
+    searchClear.classList.add('hidden');
+
+    previewSearchWrap = schemaPreviewBody.querySelector('.table-wrapper');
+
+    function closeSearch() {
+        searchBar.classList.add('hidden');
+        searchToggle.classList.remove('active');
+        searchInput.value = '';
+        searchCount.textContent = '';
+        searchClear.classList.add('hidden');
+        if (previewSearchWrap) renderTableBody(previewSearchWrap, tableEntry, { reorderable: true });
+    }
+
+    function applySearch() {
+        if (!previewSearchWrap) return;
+        const term = searchInput.value.trim();
+        const { filteredCount, totalCount } = renderTableBody(previewSearchWrap, tableEntry, { reorderable: true, searchTerm: term });
+        if (term) {
+            searchCount.textContent = `${filteredCount.toLocaleString()} / ${totalCount.toLocaleString()}`;
+            searchClear.classList.remove('hidden');
+        } else {
+            searchCount.textContent = '';
+            searchClear.classList.add('hidden');
+        }
+    }
+
+    searchToggle.onclick = () => {
+        const nowHidden = searchBar.classList.toggle('hidden'); // true = just hidden, false = just shown
+        if (nowHidden) {
+            closeSearch(); // reset state + re-render without filter
+        } else {
+            searchToggle.classList.add('active');
+            searchInput.focus();
+        }
+    };
+
+    searchInput.oninput   = applySearch;
+    searchInput.onkeydown = e => { if (e.key === 'Escape') { e.preventDefault(); closeSearch(); } };
+    searchClear.onclick   = () => { searchInput.value = ''; applySearch(); searchInput.focus(); };
 }

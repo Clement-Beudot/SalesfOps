@@ -7,171 +7,186 @@
     <meta name="color-scheme" content="dark">
     <title>Custom Search</title>
     <link rel="stylesheet" href="../styles/dark-input.css">
+    <style>
+        /* Override .modal-window centering so content flows top-down */
+        .modal-window {
+            justify-content: flex-start;
+            padding: 16px 12px 0;
+        }
+
+        .input-container { margin-bottom: 0; }
+
+        .dark-input.open {
+            border-bottom-left-radius: 0;
+            border-bottom-right-radius: 0;
+        }
+
+        .suggestions {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            background: #2d2d2d;
+            border: 1px solid #3d3d3d;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            overflow: hidden;
+        }
+
+        .suggestion-item {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #333;
+            font-size: 12px;
+            color: #fff;
+        }
+
+        .suggestion-item:last-child { border-bottom: none; }
+
+        .suggestion-item:hover,
+        .suggestion-item.active { background: rgba(158, 15, 158, 0.18); }
+
+        .hint {
+            position: static;
+            text-align: center;
+            padding: 8px 0 10px;
+            font-size: 11px;
+            color: #666;
+            opacity: 0.8;
+        }
+    </style>
 </head>
 <body class="modal-window">
     <div class="input-container">
-        <input type="text" 
+        <input type="text"
                id="search-input"
                class="dark-input"
-               placeholder="Search domain..." 
-               list="search-options"
+               placeholder="Search engine…"
                autocomplete="off"
+               spellcheck="false"
                autofocus>
-        <datalist id="search-options">
-        </datalist>
-        <div class="hint">
-            Press <span class="key">↵</span> to select or <span class="key">Esc</span> to cancel
-        </div>
+        <ul class="suggestions" id="suggestions"></ul>
+    </div>
+    <div class="hint" id="hint">
+        Press <span class="key">↵</span> to select or <span class="key">Esc</span> to cancel
     </div>
 
     <script>
-        let searches = [];
-        let selectedSearchId = null;
-        let isSearchTermMode = false;
-        let currentMatchIndex = -1;
-        let currentMatches = [];
-        let userIsTyping = false;
-        let userTypedValue = '';
-        let lastTypingTime = 0;
-        const typingTimeout = 300;
+        const H_EMPTY = 95;
+        const ITEM_H  = 32;
+        const MAX_VIS = 6;
 
-        const input = document.getElementById('search-input');
-        const datalist = document.getElementById('search-options');
+        let searches       = [];
+        let matches        = [];
+        let activeIdx      = -1;
+        let mode           = 'pick';  // 'pick' | 'term'
+        let selectedSearch = null;
 
-        window.electronAPI.on('custom-searches', (event, customSearches) => {
-            searches = customSearches;
-            updateDatalist();
+        const inp  = document.getElementById('search-input');
+        const list = document.getElementById('suggestions');
+        const hint = document.getElementById('hint');
+
+        window.electronAPI.on('custom-searches', (_event, customSearches) => {
+            searches = customSearches || [];
+            inp.focus();
         });
 
-        function updateDatalist() {
-            datalist.innerHTML = searches.map((search, index) => 
-                `<option value="${search.label}">`
-            ).join('');
+        function render(term) {
+            if (mode !== 'pick') return;
+
+            list.innerHTML = '';
+            activeIdx = -1;
+
+            if (!term) {
+                matches = [];
+                inp.classList.remove('open');
+                window.electronAPI.resizeWindow(H_EMPTY);
+                return;
+            }
+
+            const q = term.toLowerCase();
+            matches = searches.filter(s => s.label.toLowerCase().includes(q));
+
+            if (!matches.length) {
+                inp.classList.remove('open');
+                window.electronAPI.resizeWindow(H_EMPTY);
+                return;
+            }
+
+            inp.classList.add('open');
+            matches.forEach((s, i) => {
+                const li       = document.createElement('li');
+                li.className   = 'suggestion-item';
+                li.textContent = s.label;
+                li.addEventListener('mousedown', e => { e.preventDefault(); select(i); });
+                list.appendChild(li);
+            });
+
+            const h = H_EMPTY + Math.min(matches.length, MAX_VIS) * ITEM_H;
+            window.electronAPI.resizeWindow(h);
+            setActive(0);
         }
 
-        function getMatchingSearches(inputValue) {
-            const searchTerm = inputValue.toLowerCase();
-            return searches.filter(search => 
-                search.label.toLowerCase().startsWith(searchTerm)
-            );
+        function setActive(idx) {
+            [...list.querySelectorAll('.suggestion-item')].forEach((el, i) =>
+                el.classList.toggle('active', i === idx));
+            activeIdx = idx;
         }
 
-        input.addEventListener('input', (event) => {
-            if (!isSearchTermMode) {
-                const now = Date.now();
-                
-                if (now - lastTypingTime < typingTimeout) {
-                    userIsTyping = true;
-                    userTypedValue = input.value;
-                } else {
-                    userIsTyping = true;
-                    userTypedValue = input.value;
-                }
-                
-                lastTypingTime = now;
-                
-                clearTimeout(input.typingTimer);
-                input.typingTimer = setTimeout(() => {
-                    if (userIsTyping) {
-                        userIsTyping = false;
-                        
-                        const matches = getMatchingSearches(userTypedValue);
-                        if (matches.length === 1) {
-                            if (matches[0].label.toLowerCase() !== userTypedValue.toLowerCase()) {
-                                input.value = matches[0].label;
-                                input.setSelectionRange(userTypedValue.length, input.value.length);
-                            }
-                        }
-                    }
-                }, typingTimeout);
-                
-                currentMatches = getMatchingSearches(input.value);
-                currentMatchIndex = -1;
+        function select(idx) {
+            const search = matches[idx];
+            if (!search) return;
+            selectedSearch = { ...search, _idx: searches.indexOf(search) };
+
+            if (search.activateSearch) {
+                mode = 'term';
+                list.innerHTML = '';
+                inp.classList.remove('open');
+                inp.value       = '';
+                inp.placeholder = 'Enter search terms…';
+                hint.innerHTML  = `Press <span class="key">↵</span> to search or <span class="key">Esc</span> to go back`;
+                window.electronAPI.resizeWindow(H_EMPTY);
+            } else {
+                window.electronAPI.executeCustomSearch({ searchId: selectedSearch._idx, searchTerm: '' });
             }
+        }
+
+        function backToPick() {
+            mode            = 'pick';
+            selectedSearch  = null;
+            inp.value       = '';
+            inp.placeholder = 'Search engine…';
+            hint.innerHTML  = `Press <span class="key">↵</span> to select or <span class="key">Esc</span> to cancel`;
+            render('');
+        }
+
+        inp.addEventListener('input', () => {
+            if (mode === 'pick') render(inp.value.trim());
         });
 
-        input.addEventListener('keyup', (event) => {
-            if (event.key === 'Enter') {
-                if (!isSearchTermMode) {
-                    const currentValue = input.value.trim();
-                    const matches = getMatchingSearches(currentValue);
-
-                    if (matches.length === 1) {
-                        selectedSearchId = searches.findIndex(s => s.label === matches[0].label);
-                        const search = searches[selectedSearchId];
-                        
-                        if (search.activateSearch) {
-                            isSearchTermMode = true;
-                            input.value = '';
-                            input.placeholder = 'Enter search terms...';
-                            datalist.innerHTML = '';
-                            input.focus();
-                        } else {
-                            window.electronAPI.executeCustomSearch({ 
-                                searchId: selectedSearchId,
-                                searchTerm: ''
-                            });
-                        }
-                    }
-                    else if (matches.some(s => s.label === currentValue)) {
-                        selectedSearchId = searches.findIndex(s => s.label === currentValue);
-                        const search = searches[selectedSearchId];
-                        
-                        if (search.activateSearch) {
-                            isSearchTermMode = true;
-                            input.value = '';
-                            input.placeholder = 'Enter search terms...';
-                            datalist.innerHTML = '';
-                            input.focus();
-                        } else {
-                            window.electronAPI.executeCustomSearch({ 
-                                searchId: selectedSearchId,
-                                searchTerm: ''
-                            });
-                        }
-                    }
-                } else {
-                    window.electronAPI.executeCustomSearch({
-                        searchId: selectedSearchId,
-                        searchTerm: input.value.trim()
-                    });
-                }
-            } else if (event.key === 'Escape') {
-                if (isSearchTermMode) {
-                    isSearchTermMode = false;
-                    input.value = '';
-                    input.placeholder = 'Search domain...';
-                    updateDatalist();
-                    input.focus();
-                } else {
-                    window.electronAPI.closeCustomSearch();
-                }
+        inp.addEventListener('keydown', e => {
+            if (e.key === 'Escape') {
+                if (mode === 'term') { backToPick(); return; }
+                window.electronAPI.closeCustomSearch();
+                return;
             }
-        });
 
-        input.addEventListener('keydown', (event) => {
-            if (!isSearchTermMode) {
-                if (event.key === 'ArrowDown' && currentMatches.length > 0) {
-                    event.preventDefault();
-                    currentMatchIndex = (currentMatchIndex + 1) % currentMatches.length;
-                    input.value = currentMatches[currentMatchIndex].label;
-                    input.setSelectionRange(input.value.length, input.value.length);
-                    userIsTyping = false;
-                } else if (event.key === 'ArrowUp' && currentMatches.length > 0) {
-                    event.preventDefault();
-                    currentMatchIndex = currentMatchIndex <= 0 ? currentMatches.length - 1 : currentMatchIndex - 1;
-                    input.value = currentMatches[currentMatchIndex].label;
-                    input.setSelectionRange(input.value.length, input.value.length);
-                    userIsTyping = false;
-                } else if (event.key === 'Tab') {
-                    const matches = getMatchingSearches(input.value);
-                    if (matches.length === 1) {
-                        event.preventDefault();
-                        input.value = matches[0].label;
-                        input.setSelectionRange(input.value.length, input.value.length);
-                        userIsTyping = false;
-                    }
-                }
+            if (mode === 'term') {
+                if (e.key === 'Enter') { e.preventDefault(); window.electronAPI.executeCustomSearch({ searchId: selectedSearch._idx, searchTerm: inp.value.trim() }); }
+                return;
+            }
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (matches.length) setActive((activeIdx + 1) % matches.length);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (matches.length) setActive(activeIdx <= 0 ? matches.length - 1 : activeIdx - 1);
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (activeIdx >= 0) select(activeIdx);
+                else if (matches.length === 1) select(0);
             }
         });
     </script>

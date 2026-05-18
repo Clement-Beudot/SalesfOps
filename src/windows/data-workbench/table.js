@@ -1,3 +1,8 @@
+const OP_LABELS = {
+    enrich: 'JOIN', filter: 'FILTER', missing: 'MISSING',
+    stack: 'STACK', group: 'GROUP', split: 'SPLIT', transform: 'TRANSFORM'
+};
+
 function propagateRefRename(oldRef, newRef) {
     tables.forEach(t => {
         if (!t.soqlQuery) return;
@@ -82,11 +87,24 @@ function startColumnRename(th, tableEntry, colIndex) {
     input.focus();
     input.select();
 
+    function restoreSortIndicator() {
+        const si = getSortColIdx(tableEntry);
+        const ind = document.createElement('span');
+        ind.className = 'sort-indicator';
+        if (si === colIndex && tableEntry.sort) {
+            ind.textContent = tableEntry.sort.dir === 'asc' ? '▲' : '▼';
+        } else {
+            ind.textContent = '⇅';
+        }
+        th.appendChild(ind);
+    }
+
     function revert() {
         if (!input.parentNode) return;
         th.innerHTML = '';
         th.textContent = oldName;
         th.title = 'Double-click to rename';
+        restoreSortIndicator();
     }
 
     function commit() {
@@ -103,10 +121,14 @@ function startColumnRename(th, tableEntry, colIndex) {
         // Update the columnDef name in v2
         if (tableEntry.columnDefs?.[colIndex]) {
             tableEntry.columnDefs[colIndex].name = newName;
+            if (tableEntry.source === 'result') {
+                tableEntry.columnDefs[colIndex].explicit = true;
+            }
         }
         th.innerHTML = '';
         th.textContent = newName;
         th.title = 'Double-click to rename';
+        restoreSortIndicator();
         propagateColumnRename(tableEntry, oldName, newName);
     }
 
@@ -160,7 +182,7 @@ function startRename(titleEl, refChipEl, tableEntry) {
         input.replaceWith(titleEl);
         propagateRefRename(oldRef, newRef);
         updateBindingsHint();
-        if (!schemaOverlay.classList.contains('hidden')) renderSchema();
+        renderSchema();
         if (typeof renderColorRulesList === 'function') renderColorRulesList();
     }
 
@@ -261,12 +283,20 @@ async function cascadeRefresh(startId, btn, onProgress = null, onStart = null) {
                 if (errors.length) { showToast(`${t.name}: ${errors.join(' · ')}`, 'error', 0); continue; }
                 const result = await window.electronAPI.runDataWorkbenchSoql({ query: resolved, orgIdentifier: t.orgIdentifier });
                 if (result.error) { showToast(`${t.name}: ${result.error}`, 'error', 0); continue; }
+                if (result.rows.length === 0) showToast(`${t.name}: query returned 0 rows — columns preserved`, 'info', 5000);
                 t.rows = result.rows; t.totalSize = result.totalSize;
                 const removed1 = applyColumnRenames(t, result.columns);
                 markBrokenReferences(t.id, removed1);
+                t.isSnapshot = false;
+                t.lastRun = new Date().toISOString();
+                if (typeof invalidateDmlCardsForSource === 'function') invalidateDmlCardsForSource(t.id);
             } else if (t.source === 'result' && t.recipe) {
                 const result = computeFromRecipe(t.recipe);
-                t.columns = result.columns; t.columnDefs = result.columnDefs; t.rows = result.rows.map(r => [...r]); t.stale = false; t.brokenRef = false;
+                const mergedDefs = preserveResultRenames(t.columnDefs, result.columnDefs);
+                t.columnDefs = mergedDefs; t.columns = mergedDefs.map(d => d.name); t.rows = result.rows.map(r => [...r]); t.stale = false; t.brokenRef = false;
+                t.isSnapshot = false;
+                t.lastRun = new Date().toISOString();
+                if (typeof invalidateDmlCardsForSource === 'function') invalidateDmlCardsForSource(t.id);
             } else continue;
 
             updateBindingsHint();
@@ -293,27 +323,36 @@ async function cascadeRefresh(startId, btn, onProgress = null, onStart = null) {
     btn.disabled = false;
     btn.textContent = origText;
     btn.title = 'Cascade rebuild — refresh this table then all dependents in order';
+    renderSchema();
 }
 
-function addTable({ id: providedId = null, name, source, columns, columnDefs = null, rows, totalSize, subtitle, recipe = null, soqlQuery = null, orgIdentifier = null, stale = false, description = null, previewLimit = 100 }) {
+function addTable({ id: providedId = null, name, source, columns, columnDefs = null, rows, totalSize, subtitle, recipe = null, soqlQuery = null, orgIdentifier = null, stale = false, description = null, previewLimit = 100, isSnapshot = false }) {
     const id = providedId || `t_${Date.now()}`;
     const ref = tableRef(source, name);
-    const tableEntry = { id, ref, name, source, subtitle: subtitle || null, columns: [...columns], columnDefs: columnDefs ? columnDefs.map(d => ({ ...d })) : null, rows: rows.map(r => [...r]), recipe, soqlQuery, orgIdentifier, stale, description: description || null, previewLimit };
+    const lastRun = (!isSnapshot && rows.length > 0) ? new Date().toISOString() : null;
+    const finalColumnDefs = columnDefs
+        ? columnDefs.map(d => ({ ...d }))
+        : (source === 'paste' || source === 'soql') && columns.length > 0
+            ? columns.map(n => ({ id: n, name: n, origin: n }))
+            : null;
+    const tableEntry = { id, ref, name, source, subtitle: subtitle || null, columns: [...columns], columnDefs: finalColumnDefs, rows: rows.map(r => [...r]), recipe, soqlQuery, orgIdentifier, stale, description: description || null, previewLimit, isSnapshot, lastRun };
     tables.push(tableEntry);
     updateBindingsHint();
     btnResult.style.display = '';
     btnSaveModel.style.display = '';
+    btnSnapshotModel.style.display = '';
+    if (workbenchDmlEnabled) btnDml.style.display = '';
     if (typeof btnColorRules !== 'undefined') btnColorRules.style.display = '';
-    if (btnSchema.style.display === 'none') {
-        btnSchema.style.display = '';
-        btnSchema.textContent = 'Switch to Schema';
-    }
+    if (tables.length === 1) switchToSchema();
     emptyState.style.display = 'none';
+
+    const op = source === 'result' && recipe?.op ? recipe.op : null;
 
     const card = document.createElement('div');
     card.className = 'table-card';
     card.dataset.tableId = id;
     card.dataset.source = source;
+    if (op) card.dataset.op = op;
 
     const cardHeader = document.createElement('div');
     cardHeader.className = 'card-header';
@@ -323,10 +362,15 @@ function addTable({ id: providedId = null, name, source, columns, columnDefs = n
     title.textContent = name;
     title.title = 'Double-click to rename';
     title.addEventListener('dblclick', () => startRename(title, refChip, tableEntry));
-
     const badge = document.createElement('span');
-    badge.className = `source-badge ${source}`;
-    badge.textContent = source === 'paste' ? 'Paste' : source === 'soql' ? 'SOQL' : 'Result';
+    badge.className = op ? `source-badge result-${op}` : `source-badge ${source}`;
+    badge.textContent = source === 'paste' ? 'Paste' : source === 'soql' ? 'SOQL' : (OP_LABELS[op] || 'Result');
+
+    const snapshotBadge = document.createElement('span');
+    snapshotBadge.className = 'snapshot-badge';
+    snapshotBadge.textContent = 'Snapshot';
+    snapshotBadge.title = 'Data loaded from snapshot — click ↻ to fetch fresh data';
+    if (!isSnapshot) snapshotBadge.style.display = 'none';
 
     const refChip = document.createElement('span');
     refChip.className = 'ref-chip';
@@ -412,6 +456,7 @@ function addTable({ id: providedId = null, name, source, columns, columnDefs = n
                 try {
                     const result = await window.electronAPI.runDataWorkbenchSoql({ query: resolved, orgIdentifier: tableEntry.orgIdentifier });
                     if (result.error) { showToast(result.error, 'error', 0); return; }
+                    if (result.rows.length === 0) showToast(`${tableEntry.name}: query returned 0 rows — columns preserved`, 'info', 5000);
                     tableEntry.rows      = result.rows;
                     tableEntry.totalSize = result.totalSize;
                     const removed2 = applyColumnRenames(tableEntry, result.columns);
@@ -424,15 +469,19 @@ function addTable({ id: providedId = null, name, source, columns, columnDefs = n
                     void card.offsetWidth;
                     card.classList.add('recalc-flash');
                     card.addEventListener('animationend', () => card.classList.remove('recalc-flash'), { once: true });
+                    tableEntry.isSnapshot = false;
+                    tableEntry.lastRun = new Date().toISOString();
+                    if (typeof invalidateDmlCardsForSource === 'function') invalidateDmlCardsForSource(tableEntry.id);
                     markDependentsStale(tableEntry.id);
+                    renderSchema();
                 } finally {
                     btnRerunQuick.classList.remove('spinning');
                     btnRerunQuick.disabled = false;
                 }
             });
-            cardHeader.append(btnCollapse, title, badge, refChip, rowCount, spacer, btnCascade, btnRerunQuick, btnEdit, btnCsv, btnSheet, btnDownload, btnDelete);
+            cardHeader.append(btnCollapse, title, badge, snapshotBadge, refChip, rowCount, spacer, btnCascade, btnRerunQuick, btnEdit, btnCsv, btnSheet, btnDownload, btnDelete);
         } else {
-            cardHeader.append(btnCollapse, title, badge, refChip, rowCount, spacer, btnCascade, btnEdit, btnCsv, btnSheet, btnDownload, btnDelete);
+            cardHeader.append(btnCollapse, title, badge, snapshotBadge, refChip, rowCount, spacer, btnCascade, btnEdit, btnCsv, btnSheet, btnDownload, btnDelete);
         }
         card.append(cardHeader, editArea, wrapper);
     } else {
@@ -454,15 +503,19 @@ function addTable({ id: providedId = null, name, source, columns, columnDefs = n
 
         function doRecalc() {
             const result = computeFromRecipe(tableEntry.recipe);
-            tableEntry.columns    = result.columns;
-            tableEntry.columnDefs = result.columnDefs;
+            const mergedDefs = preserveResultRenames(tableEntry.columnDefs, result.columnDefs);
+            tableEntry.columnDefs = mergedDefs;
+            tableEntry.columns    = mergedDefs.map(d => d.name);
             tableEntry.rows       = result.rows.map(r => [...r]);
             tableEntry.stale      = false;
             tableEntry.brokenRef  = false;
+            tableEntry.isSnapshot = false;
+            tableEntry.lastRun    = new Date().toISOString();
+            if (typeof invalidateDmlCardsForSource === 'function') invalidateDmlCardsForSource(tableEntry.id);
             btnRecalcQuick.classList.remove('stale');
             updateBindingsHint();
             renderTableBody(wrapper, tableEntry);
-            rowCount.textContent = `${rows.length} row${rows.length !== 1 ? 's' : ''}`;
+            rowCount.textContent = `${result.rows.length} row${result.rows.length !== 1 ? 's' : ''}`;
             staleBanner.classList.remove('visible');
             brokenBanner.classList.remove('visible');
             card.classList.remove('recalc-flash');
@@ -470,6 +523,7 @@ function addTable({ id: providedId = null, name, source, columns, columnDefs = n
             card.classList.add('recalc-flash');
             card.addEventListener('animationend', () => card.classList.remove('recalc-flash'), { once: true });
             markDependentsStale(tableEntry.id);
+            renderSchema();
         }
 
         const btnRecalc = document.createElement('button');
@@ -494,32 +548,66 @@ function addTable({ id: providedId = null, name, source, columns, columnDefs = n
         btnEdit.title = 'Edit recipe and re-run';
         btnEdit.addEventListener('click', () => openResultPanelForEdit(tableEntry));
 
-        cardHeader.append(btnCollapse, title, badge, refChip, rowCount, spacer, btnCascade, btnRecalcQuick, btnEdit, btnCsv, btnSheet, btnDownload, btnDelete);
+        cardHeader.append(btnCollapse, title, badge, snapshotBadge, refChip, rowCount, spacer, btnCascade, btnRecalcQuick, btnEdit, btnCsv, btnSheet, btnDownload, btnDelete);
         card.append(cardHeader, staleBanner, brokenBanner, wrapper);
     }
 
     content.appendChild(card);
-    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    if (tables.length === 1) {
-        switchToSchema();
-    } else if (!schemaOverlay.classList.contains('hidden')) {
-        renderSchema();
-    }
+    renderSchema();
 }
 
-function renderTableBody(wrapper, tableEntry) {
+function getSortColIdx(tableEntry) {
+    if (!tableEntry.sort) return -1;
+    const defs = tableEntry.columnDefs;
+    if (defs) return defs.findIndex(d => d.id === tableEntry.sort.colId);
+    return tableEntry.columns.indexOf(tableEntry.sort.colId);
+}
+
+function cycleSort(tableEntry, colId) {
+    const cur = tableEntry.sort;
+    if (!cur || cur.colId !== colId)       tableEntry.sort = { colId, dir: 'asc' };
+    else if (cur.dir === 'asc')            tableEntry.sort = { colId, dir: 'desc' };
+    else                                   tableEntry.sort = null;
+}
+
+function buildHighlightedText(text, term) {
+    const frag = document.createDocumentFragment();
+    const lower = text.toLowerCase();
+    let start = 0, pos;
+    while ((pos = lower.indexOf(term, start)) >= 0) {
+        if (pos > start) frag.appendChild(document.createTextNode(text.slice(start, pos)));
+        const mark = document.createElement('mark');
+        mark.className = 'search-highlight';
+        mark.textContent = text.slice(pos, pos + term.length);
+        frag.appendChild(mark);
+        start = pos + term.length;
+    }
+    if (start < text.length) frag.appendChild(document.createTextNode(text.slice(start)));
+    return frag;
+}
+
+function renderTableBody(wrapper, tableEntry, { reorderable = false, searchTerm = '' } = {}) {
     wrapper.innerHTML = '';
     if (tableEntry.columns.length === 0) {
         const msg = document.createElement('div');
         msg.className = 'no-results';
         msg.textContent = 'Query returned no results.';
         wrapper.appendChild(msg);
-        return;
+        return { filteredCount: 0, totalCount: 0 };
     }
 
     const limit = tableEntry.previewLimit || 100;
-    const visibleRows = tableEntry.rows.slice(0, limit);
-    const total = tableEntry.rows.length;
+    const term = searchTerm.toLowerCase();
+    const allRows = tableEntry.rows;
+    const filteredRows = term
+        ? allRows.filter(row => row.some(cell => cell !== null && cell !== undefined && String(cell).toLowerCase().includes(term)))
+        : allRows;
+    const total = filteredRows.length;
+    const sortIdx = getSortColIdx(tableEntry);
+    const displayRows = sortIdx >= 0
+        ? [...filteredRows].sort(DWLogic.makeRowComparator(sortIdx, tableEntry.sort.dir, DWLogic.detectColType(filteredRows, sortIdx)))
+        : filteredRows;
+    const visibleRows = displayRows.slice(0, limit);
 
     const tbl = document.createElement('table');
     tbl.className = 'data-table';
@@ -529,10 +617,77 @@ function renderTableBody(wrapper, tableEntry) {
     tableEntry.columns.forEach((col, colIndex) => {
         const th = document.createElement('th');
         th.textContent = col;
-        th.title = 'Double-click to rename';
-        th.addEventListener('dblclick', () => startColumnRename(th, tableEntry, colIndex));
+        th.title = reorderable ? 'Click to sort · Double-click to rename · Drag to reorder' : 'Click to sort · Double-click to rename';
+
+        // Sort indicator
+        const isSorted = sortIdx === colIndex;
+        const indicator = document.createElement('span');
+        indicator.className = 'sort-indicator';
+        indicator.textContent = isSorted ? (tableEntry.sort.dir === 'asc' ? '▲' : '▼') : '⇅';
+        if (isSorted) th.classList.add(tableEntry.sort.dir === 'asc' ? 'sorted-asc' : 'sorted-desc');
+        th.appendChild(indicator);
+
+        // Single click → sort (with timer to disambiguate from dblclick)
+        let clickTimer = null;
+        th.addEventListener('click', () => {
+            clearTimeout(clickTimer);
+            clickTimer = setTimeout(() => {
+                const def = tableEntry.columnDefs?.[colIndex];
+                cycleSort(tableEntry, def ? def.id : col);
+                renderTableBody(wrapper, tableEntry, { reorderable, searchTerm });
+                renderSchema();
+            }, 200);
+        });
+        th.addEventListener('dblclick', () => {
+            clearTimeout(clickTimer);
+            startColumnRename(th, tableEntry, colIndex);
+        });
+
+        if (reorderable) {
+            th.draggable = true;
+            th.classList.add('col-reorderable');
+        }
         headerRow.appendChild(th);
     });
+
+    if (reorderable) {
+        let dragSrcIdx = null;
+        const ths = Array.from(headerRow.children);
+        ths.forEach((th, i) => {
+            th.addEventListener('dragstart', e => {
+                dragSrcIdx = i;
+                th.classList.add('col-dragging');
+                e.dataTransfer.effectAllowed = 'move';
+            });
+            th.addEventListener('dragend', () => {
+                th.classList.remove('col-dragging');
+                ths.forEach(h => h.classList.remove('col-drag-over'));
+            });
+            th.addEventListener('dragover', e => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                if (i !== dragSrcIdx) {
+                    ths.forEach(h => h.classList.remove('col-drag-over'));
+                    th.classList.add('col-drag-over');
+                }
+            });
+            th.addEventListener('dragleave', () => th.classList.remove('col-drag-over'));
+            th.addEventListener('drop', e => {
+                e.preventDefault();
+                th.classList.remove('col-drag-over');
+                if (dragSrcIdx === null || dragSrcIdx === i) return;
+                const from = dragSrcIdx;
+                const to = i;
+                const moveEl = (arr) => { arr.splice(to, 0, arr.splice(from, 1)[0]); };
+                moveEl(tableEntry.columnDefs);
+                tableEntry.columns = tableEntry.columnDefs.map(d => d.name);
+                tableEntry.rows.forEach(row => moveEl(row));
+                renderTableBody(wrapper, tableEntry, { reorderable: true });
+                renderSchema();
+            });
+        });
+    }
+
     thead.appendChild(headerRow);
 
     const tbody = document.createElement('tbody');
@@ -546,8 +701,21 @@ function renderTableBody(wrapper, tableEntry) {
                 td.textContent = '—';
                 td.classList.add('empty-val');
             } else {
-                td.textContent = cell;
-                td.title = String(cell).length > 40 ? cell : '';
+                const s = String(cell);
+                const highlighted = term && s.toLowerCase().includes(term);
+                if (sfInstanceUrl && /^[a-zA-Z0-9]{15}$|^[a-zA-Z0-9]{18}$/.test(s)) {
+                    const a = document.createElement('a');
+                    a.className = 'sf-id-link';
+                    a.title = `Open in Salesforce`;
+                    a.addEventListener('click', () => window.electronAPI.openSalesforceId(s));
+                    if (highlighted) a.appendChild(buildHighlightedText(s, term));
+                    else a.textContent = s;
+                    td.appendChild(a);
+                } else {
+                    if (highlighted) td.appendChild(buildHighlightedText(s, term));
+                    else td.textContent = s;
+                    td.title = s.length > 40 ? s : '';
+                }
             }
             tr.appendChild(td);
         });
@@ -575,7 +743,7 @@ function renderTableBody(wrapper, tableEntry) {
             const v = parseInt(input.value, 10);
             if (!v || v < 1 || v === tableEntry.previewLimit) return;
             tableEntry.previewLimit = v;
-            renderTableBody(wrapper, tableEntry);
+            renderTableBody(wrapper, tableEntry, { reorderable, searchTerm });
             const mainCard = document.querySelector(`.table-card[data-table-id="${tableEntry.id}"]`);
             if (mainCard) {
                 const mw = mainCard.querySelector('.table-wrapper');
@@ -589,6 +757,8 @@ function renderTableBody(wrapper, tableEntry) {
         footer.append(info, input);
         wrapper.appendChild(footer);
     }
+
+    return { filteredCount: filteredRows.length, totalCount: allRows.length };
 }
 
 // ── Shared card update ─────────────────────────────
@@ -639,16 +809,18 @@ function deleteTableSafe(tableEntry, card, errSpan) {
     card.remove();
     updateBindingsHint();
     if (!document.querySelector('.table-card')) {
+        schemaTransform = { x: 0, y: 0, scale: 1 };
         emptyState.style.display = '';
         btnResult.style.display = 'none';
         btnSaveModel.style.display = 'none';
-        btnSchema.style.display = 'none';
+        btnDml.style.display = 'none';
         if (typeof btnColorRules !== 'undefined') btnColorRules.style.display = 'none';
         switchToTables();
         resultPanel.classList.remove('open');
         btnResult.classList.remove('active-toggle');
         btnResult.textContent = '+ Add Result';
-    } else if (!schemaOverlay.classList.contains('hidden')) {
+        closeDmlPanel();
+    } else {
         renderSchema();
     }
     return true;
@@ -660,6 +832,9 @@ function toggleCardEdit(editArea, btnEdit) {
 }
 
 function buildPasteEditArea(editArea, tableEntry, card) {
+    const isLarge = tableEntry.rows.length > LARGE_TABLE_THRESHOLD;
+    let lastParsed = null; // holds parsed result for large incoming files
+
     // ── Hidden file input ──
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
@@ -696,8 +871,11 @@ function buildPasteEditArea(editArea, tableEntry, card) {
     fileInfoClear.addEventListener('click', () => {
         fileInfoBar.classList.add('hidden');
         dropZone.classList.remove('hidden');
-        textarea.value = [tableEntry.columns, ...tableEntry.rows].map(r => r.join('\t')).join('\n');
+        lastParsed = null;
         errSpan.classList.remove('visible');
+        if (!isLarge) {
+            textarea.value = [tableEntry.columns, ...tableEntry.rows].map(r => r.join('\t')).join('\n');
+        }
     });
     fileInfoBar.append(fileInfoName, fileInfoMeta, fileInfoClear);
 
@@ -706,11 +884,38 @@ function buildPasteEditArea(editArea, tableEntry, card) {
     divider.className = 'card-edit-divider';
     divider.textContent = '— or edit data manually —';
 
+    // ── Large table notice ──
+    const largeNotice = document.createElement('div');
+    largeNotice.className = 'large-table-notice';
+    const largeStat = document.createElement('div');
+    largeStat.className = 'large-table-notice-stat';
+    largeStat.textContent = `${tableEntry.rows.length.toLocaleString()} rows × ${tableEntry.columns.length} columns`;
+    const largeText = document.createElement('div');
+    largeText.className = 'large-table-notice-text';
+    largeText.textContent = 'This table is too large to edit manually. Drop a new CSV or TSV file above to replace it, or download the current data to edit externally.';
+    const btnDownload = document.createElement('button');
+    btnDownload.className = 'btn-secondary';
+    btnDownload.textContent = '↓ Download as CSV';
+    btnDownload.addEventListener('click', async () => {
+        const csv = [tableEntry.columns, ...tableEntry.rows]
+            .map(r => r.map(v => { const s = String(v ?? ''); return (s.includes(',') || s.includes('"') || s.includes('\n')) ? `"${s.replace(/"/g, '""')}"` : s; }).join(','))
+            .join('\n');
+        await window.electronAPI.downloadWorkbenchCsv({ filename: tableEntry.name + '.csv', content: csv });
+    });
+    largeNotice.append(largeStat, largeText, btnDownload);
+
     // ── Textarea ──
     const textarea = document.createElement('textarea');
     textarea.className = 'add-textarea';
     textarea.placeholder = 'Paste tab-separated data…';
-    textarea.value = [tableEntry.columns, ...tableEntry.rows].map(r => r.join('\t')).join('\n');
+    if (!isLarge) {
+        textarea.value = [tableEntry.columns, ...tableEntry.rows].map(r => r.join('\t')).join('\n');
+    }
+
+    if (isLarge) {
+        divider.style.display = 'none';
+        textarea.style.display = 'none';
+    }
 
     const errSpan = document.createElement('span');
     errSpan.className = 'panel-error';
@@ -727,9 +932,18 @@ function buildPasteEditArea(editArea, tableEntry, card) {
             const parsed = isCsv ? parseCsv(text) : parseTsv(text);
             if (!parsed) { showError(errSpan, `Could not parse "${file.name}".`); return; }
             errSpan.classList.remove('visible');
-            textarea.value = [parsed.columns, ...parsed.rows].map(r => r.join('\t')).join('\n');
+            if (parsed.rows.length > LARGE_TABLE_THRESHOLD) {
+                lastParsed = parsed;
+                textarea.style.display = 'none';
+                divider.style.display = 'none';
+            } else {
+                lastParsed = null;
+                textarea.style.display = '';
+                divider.style.display = '';
+                textarea.value = [parsed.columns, ...parsed.rows].map(r => r.join('\t')).join('\n');
+            }
             fileInfoName.textContent = file.name;
-            fileInfoMeta.textContent = `${parsed.columns.length} col · ${parsed.rows.length} rows`;
+            fileInfoMeta.textContent = `${parsed.columns.length} col · ${parsed.rows.length.toLocaleString()} rows`;
             dropZone.classList.add('hidden');
             fileInfoBar.classList.remove('hidden');
             diffPanel.classList.add('hidden');
@@ -845,7 +1059,7 @@ function buildPasteEditArea(editArea, tableEntry, card) {
     btnReimport.className = 'btn-primary';
     btnReimport.textContent = 'Replace Table';
     btnReimport.addEventListener('click', () => {
-        const parsed = parseTsv(textarea.value);
+        const parsed = lastParsed || parseTsv(textarea.value);
         if (!parsed) { showError(errSpan, 'No valid data found.'); return; }
         errSpan.classList.remove('visible');
         if (!tableEntry.columnDefs) { commitReplace(parsed, null); return; }
@@ -868,7 +1082,7 @@ function buildPasteEditArea(editArea, tableEntry, card) {
     const footer = document.createElement('div');
     footer.className = 'panel-footer';
     footer.append(descInput, errSpan, btnDeletePanel, btnReimport);
-    editArea.append(fileInput, dropZone, fileInfoBar, divider, textarea, diffPanel, footer);
+    editArea.append(fileInput, dropZone, fileInfoBar, divider, ...(isLarge ? [largeNotice] : []), textarea, diffPanel, footer);
 }
 
 function buildSoqlEditArea(editArea, tableEntry, card) {
@@ -947,6 +1161,7 @@ function buildSoqlEditArea(editArea, tableEntry, card) {
                 tableEntry.orgIdentifier = org;
                 const removed4 = applyColumnRenames(tableEntry, result.columns);
                 markBrokenReferences(tableEntry.id, removed4);
+                if (typeof invalidateDmlCardsForSource === 'function') invalidateDmlCardsForSource(tableEntry.id);
                 refreshTableCard(tableEntry);
                 const btnEdit = card.querySelector('.btn-edit-panel');
                 toggleCardEdit(editArea, btnEdit);

@@ -30,14 +30,6 @@ Type your query and press **↵**. The app opens the Salesforce global search re
 
 **Keyboard shortcut:** configurable in Settings.
 
-### Open Salesforce Org
-
-Browse your authenticated Salesforce orgs and open one in the browser.
-
-Lists all orgs authenticated via the Salesforce CLI (`sf org login web`). Select an org and press **↵** to open it.
-
----
-
 ## Data
 
 ### Concatenate Strings
@@ -97,3 +89,25 @@ Quickly insert pre-configured text blocks by keyword.
 Define snippets in **Settings → Snippets**. Each snippet has a short keyword and a body. Open the command, type a keyword (the list filters as you type), and press **↵** to copy the snippet body to the clipboard.
 
 **Keyboard shortcut:** configurable in Settings.
+
+---
+
+## Salesforce CLI
+
+These features require the Salesforce CLI (`sf`) to be installed and at least one org authenticated. Enable them in **Settings → Salesforce CLI**.
+
+### SOQL Runner
+
+Run SOQL queries against any authenticated Salesforce org from a lightweight floating window.
+
+Write a query in the text area and press **⌘↵** (Mac) / **Ctrl+↵** (Windows) to execute it. A persistent suggestions panel on the right offers object and field autocomplete, lookup traversal, and picklist value suggestions (including a multi-select checkbox list for `IN` clauses). Results appear in a table with search, row-limit controls, and CSV/Sheet export. Queries are automatically saved to a recent history, and you can save favourites with the **☆** button for quick access from the **📚** library.
+
+**Keyboard shortcut:** configurable in Settings → Salesforce CLI.
+
+### Open Salesforce Org
+
+Browse your authenticated Salesforce orgs and open one in the browser.
+
+Lists all orgs authenticated via `sf org login web`. Select an org and press **↵** to open it.
+
+**Keyboard shortcut:** configurable in Settings → Salesforce CLI.

@@ -1,6 +1,51 @@
 // ── Version badge ─────────────────────────────────
 document.getElementById('workbench-version-badge').textContent = `BETA v${WORKBENCH_VERSION}`;
 
+// ── Current model file tracking ────────────────────
+var currentModelPath = null;
+
+function setCurrentModelPath(fp) {
+    currentModelPath = fp;
+    if (fp) {
+        const name = fp.split(/[\\/]/).pop();
+        modelFilenameEl.textContent = name;
+        modelFilenameEl.title = fp;
+        modelFilenameEl.classList.remove('hidden');
+        // On first save, derive schema name from filename if not yet set
+        if (!schemaName) {
+            schemaName = name.replace(/\.(json)$/i, '');
+            schemaCreatedAt = new Date().toISOString();
+            updateSchemaBarTitle();
+        }
+    } else {
+        modelFilenameEl.classList.add('hidden');
+    }
+}
+
+function updateSchemaBarTitle() {
+    if (schemaBarTitle) schemaBarTitle.textContent = schemaName || 'Schema';
+}
+
+// ── Salesforce instance URL (for clickable IDs) ────
+var sfInstanceUrl = '';
+window.electronAPI.getSetting('salesforceInstanceUrl').then(url => {
+    sfInstanceUrl = (url || '').replace(/\/$/, '');
+});
+
+// ── Workbench permissions ──────────────────────────
+window.electronAPI.getSettings().then(settings => {
+    workbenchSoqlEnabled = settings.workbenchSoqlActive === true;
+    workbenchDmlEnabled  = settings.workbenchDmlActive  === true;
+
+    if (!workbenchSoqlEnabled) {
+        const soqlTab = document.querySelector('.mode-tab[data-mode="soql"]');
+        if (soqlTab) soqlTab.style.display = 'none';
+    }
+    if (!workbenchDmlEnabled) {
+        btnDml.style.display = 'none';
+    }
+});
+
 // ── Add panel toggle ──────────────────────────────
 
 btnAdd.addEventListener('click', () => {
@@ -14,6 +59,7 @@ btnAdd.addEventListener('click', () => {
         resultPanel.classList.remove('open');
         btnResult.classList.remove('active-toggle');
         btnResult.textContent = '+ Add Result';
+        closeDmlPanel();
         const activeMode = document.querySelector('.mode-tab.active')?.dataset.mode;
         if (activeMode === 'soql' && !orgsLoaded && !orgsLoading) {
             loadOrgs();
@@ -29,6 +75,7 @@ btnResult.addEventListener('click', () => {
     btnResult.textContent = isOpen ? '✕ Close' : '+ Add Result';
     // Reset edit mode whenever the panel is opened fresh or closed via this button
     editingTableEntry = null;
+    unlockOpTiles();
     btnCreateResult.textContent = 'Create Result';
     btnDeleteResult.style.display = 'none';
     resultDescription.value = '';
@@ -36,6 +83,7 @@ btnResult.addEventListener('click', () => {
         addPanel.classList.remove('open');
         btnAdd.classList.remove('active-toggle');
         btnAdd.textContent = '+ Add Table';
+        closeDmlPanel();
         openResultPanel();
     }
 });
@@ -136,9 +184,21 @@ function loadPasteFileIntoTextarea(file) {
         const parsed = isCsv ? parseCsv(text) : parseTsv(text);
         if (!parsed) { showError(pasteError, `Could not parse "${file.name}".`); return; }
         pasteError.classList.remove('visible');
-        pasteInput.value = [parsed.columns, ...parsed.rows].map(r => r.join('\t')).join('\n');
+        if (parsed.rows.length > LARGE_TABLE_THRESHOLD) {
+            pasteEditingLargeParsed = parsed;
+            pasteInput.value = '';
+            pasteInput.style.display = 'none';
+            pasteEditDivider.style.display = 'none';
+            btnImport.disabled = false; // allow commit via stored parsed
+        } else {
+            pasteEditingLargeParsed = null;
+            pasteInput.style.display = '';
+            pasteEditDivider.style.display = '';
+            pasteInput.value = [parsed.columns, ...parsed.rows].map(r => r.join('\t')).join('\n');
+            btnImport.disabled = false;
+        }
         pasteEditFileName.textContent = file.name;
-        pasteEditFileMeta.textContent = `${parsed.columns.length} col · ${parsed.rows.length} rows`;
+        pasteEditFileMeta.textContent = `${parsed.columns.length} col · ${parsed.rows.length.toLocaleString()} rows`;
         pasteEditDropZone.classList.add('hidden');
         pasteEditFileInfo.classList.remove('hidden');
     };
@@ -163,8 +223,20 @@ pasteEditDropZone.addEventListener('drop', e => {
 pasteEditFileClear.addEventListener('click', () => {
     pasteEditFileInfo.classList.add('hidden');
     pasteEditDropZone.classList.remove('hidden');
+    pasteEditingLargeParsed = null;
     if (pasteEditingEntry) {
-        pasteInput.value = [pasteEditingEntry.columns, ...pasteEditingEntry.rows].map(r => r.join('\t')).join('\n');
+        const origLarge = pasteEditingEntry.rows.length > LARGE_TABLE_THRESHOLD;
+        if (origLarge) {
+            pasteInput.value = '';
+            pasteInput.style.display = 'none';
+            pasteEditDivider.style.display = 'none';
+            btnImport.disabled = true;
+        } else {
+            pasteInput.style.display = '';
+            pasteEditDivider.style.display = '';
+            pasteInput.value = [pasteEditingEntry.columns, ...pasteEditingEntry.rows].map(r => r.join('\t')).join('\n');
+            btnImport.disabled = false;
+        }
     }
 });
 
@@ -216,9 +288,29 @@ function openAddPanelForPasteEdit(tableEntry) {
     viewFile.classList.remove('active');
     viewPaste.classList.add('active');
 
-    // Re-build TSV from current data
-    const tsv = [tableEntry.columns, ...tableEntry.rows].map(row => row.join('\t')).join('\n');
-    pasteInput.value = tsv;
+    const isLarge = tableEntry.rows.length > LARGE_TABLE_THRESHOLD;
+
+    if (isLarge) {
+        pasteInput.value = '';
+        pasteInput.style.display = 'none';
+        pasteEditDivider.style.display = 'none';
+        pasteLargeStat.textContent = `${tableEntry.rows.length.toLocaleString()} rows × ${tableEntry.columns.length} columns`;
+        pasteLargeNotice.classList.remove('hidden');
+        pasteLargeDownload.onclick = async () => {
+            const csv = [tableEntry.columns, ...tableEntry.rows]
+                .map(r => r.map(v => { const s = String(v ?? ''); return (s.includes(',') || s.includes('"') || s.includes('\n')) ? `"${s.replace(/"/g, '""')}"` : s; }).join(','))
+                .join('\n');
+            await window.electronAPI.downloadWorkbenchCsv({ filename: tableEntry.name + '.csv', content: csv });
+        };
+        btnImport.disabled = true;
+    } else {
+        pasteInput.style.display = '';
+        pasteInput.value = [tableEntry.columns, ...tableEntry.rows].map(row => row.join('\t')).join('\n');
+        pasteLargeNotice.classList.add('hidden');
+        pasteEditDivider.style.display = '';
+        btnImport.disabled = false;
+    }
+
     pasteDescription.value = tableEntry.description || '';
     clearErrors();
 
@@ -235,7 +327,7 @@ function openAddPanelForPasteEdit(tableEntry) {
     btnAdd.classList.add('active-toggle');
     btnAdd.textContent = '✕ Close';
 
-    setTimeout(() => pasteInput.focus(), 50);
+    if (!isLarge) setTimeout(() => pasteInput.focus(), 50);
 }
 
 // ── Paste import ──────────────────────────────────
@@ -258,12 +350,14 @@ function commitPasteEditing(entry, parsed, manualMappings) {
     }
     entry.rows = parsed.rows;
     entry.totalSize = parsed.rows.length;
+    entry.isSnapshot = false;
+    entry.lastRun = new Date().toISOString();
     entry.description = pasteDescription.value.trim() || null;
     const removed = applyColumnRenames(entry, parsed.columns);
     markBrokenReferences(entry.id, removed);
     refreshTableCard(entry);
     markDependentsStale(entry.id);
-    if (!schemaOverlay.classList.contains('hidden')) renderSchema();
+    renderSchema();
     pasteInput.value = '';
     pasteDescription.value = '';
     pasteError.textContent = '';
@@ -368,8 +462,7 @@ function showPasteEditingDiff(entry, parsed, diff) {
 }
 
 function importFromPaste() {
-    const text = pasteInput.value;
-    const parsed = parseTsv(text);
+    const parsed = pasteEditingLargeParsed || parseTsv(pasteInput.value);
     if (!parsed) {
         showError(pasteError, 'No valid data found. Paste tab-separated content copied from a spreadsheet.');
         return;
@@ -515,7 +608,9 @@ soqlInput.addEventListener('keydown', (e) => {
 });
 
 async function runSoqlQuery() {
-    const rawQuery = soqlInput.value.trim();
+    const raw = soqlInput.value.trim();
+    const rawQuery = raw.replace(/,+(\s*)(\bFROM\b)/gi, '$1$2');
+    if (rawQuery !== raw) soqlInput.value = rawQuery;
     if (!rawQuery) {
         showError(soqlError, 'Please enter a SOQL query.');
         return;
@@ -537,6 +632,8 @@ async function runSoqlQuery() {
 
         if (result.error) {
             showError(soqlError, result.error);
+        } else if (result.rows.length === 0 && !soqlEditingEntry) {
+            showError(soqlError, 'Query returned 0 rows — refine your query or check your filters.');
         } else if (soqlEditingEntry) {
             const entry = soqlEditingEntry;
             entry.rows = result.rows;
@@ -545,11 +642,12 @@ async function runSoqlQuery() {
             entry.orgIdentifier = orgIdentifier;
             entry.subtitle = orgIdentifier || 'default';
             entry.description = soqlDescription.value.trim() || null;
+            if (result.rows.length === 0) showToast(`${entry.name}: query returned 0 rows — columns preserved`, 'info', 5000);
             const removedB = applyColumnRenames(entry, result.columns);
             markBrokenReferences(entry.id, removedB);
             refreshTableCard(entry);
             markDependentsStale(entry.id);
-            if (!schemaOverlay.classList.contains('hidden')) renderSchema();
+            renderSchema();
             soqlInput.value = '';
             soqlDescription.value = '';
             closePanel();
@@ -576,13 +674,87 @@ async function runSoqlQuery() {
     }
 }
 
-// ── Save / Load model ──────────────────────────────
+// ── SOQL Autocomplete ─────────────────────────────
+
+const soqlAC = initSoqlAutocomplete({
+    textarea:       soqlInput,
+    dropdown:       document.getElementById('soql-autocomplete'),
+    getOrg:         () => orgSelect.value,
+    describeObject: (objectName, org) =>
+        window.electronAPI.sfDescribeObject({ objectName, orgIdentifier: org }),
+    listObjects:       (org) =>
+        window.electronAPI.sfListObjects({ orgIdentifier: org }).then(r => r.success ? r.data : []),
+    invalidateObjects: (org) =>
+        window.electronAPI.sfClearObjectList({ orgIdentifier: org }),
+    invalidateDescribe: (org, objectName) =>
+        window.electronAPI.sfClearObjectDescribe({ orgIdentifier: org, objectName })
+});
+
+// ── Schema metadata popup ───────────────────────────
+const schemaMetaPopup  = document.getElementById('schema-meta-popup');
+const schemaMetaName   = document.getElementById('schema-meta-name');
+const schemaMetaDesc   = document.getElementById('schema-meta-desc');
+const schemaMetaSave   = document.getElementById('schema-meta-save');
+const schemaMetaCancel = document.getElementById('schema-meta-cancel');
+
+function openSchemaMetaPopup() {
+    schemaMetaName.value = schemaName;
+    schemaMetaDesc.value = schemaDescription;
+    schemaMetaPopup.classList.remove('hidden');
+    // Position below the title
+    const rect = schemaBarTitle.getBoundingClientRect();
+    schemaMetaPopup.style.top  = `${rect.bottom + 6}px`;
+    schemaMetaPopup.style.left = `${rect.left}px`;
+    schemaMetaName.focus();
+    schemaMetaName.select();
+}
+
+function closeSchemaMetaPopup() {
+    schemaMetaPopup.classList.add('hidden');
+}
+
+function commitSchemaMeta() {
+    schemaName        = schemaMetaName.value.trim();
+    schemaDescription = schemaMetaDesc.value.trim();
+    updateSchemaBarTitle();
+    closeSchemaMetaPopup();
+}
+
+if (schemaBarTitle) schemaBarTitle.addEventListener('click', openSchemaMetaPopup);
+schemaMetaSave.addEventListener('click', commitSchemaMeta);
+schemaMetaCancel.addEventListener('click', closeSchemaMetaPopup);
+schemaMetaName.addEventListener('keydown', e => { if (e.key === 'Enter') commitSchemaMeta(); if (e.key === 'Escape') closeSchemaMetaPopup(); });
+schemaMetaDesc.addEventListener('keydown', e => { if (e.key === 'Escape') closeSchemaMetaPopup(); });
+document.addEventListener('mousedown', e => {
+    if (!schemaMetaPopup.classList.contains('hidden') && !schemaMetaPopup.contains(e.target) && e.target !== schemaBarTitle)
+        closeSchemaMetaPopup();
+});
+
+// ── New / Save / Load model ────────────────────────
+
+const newModelModal   = document.getElementById('new-model-modal');
+const newModelConfirm = document.getElementById('new-model-confirm');
+const newModelCancel  = document.getElementById('new-model-cancel');
+
+function doNewSchema() {
+    newModelModal.classList.add('hidden');
+    deserializeModel({ version: 2, tables: [], colorRules: [] });
+    setCurrentModelPath(null);
+}
+
+document.getElementById('btn-new-model').addEventListener('click', () => {
+    if (tables.length === 0) { doNewSchema(); return; }
+    newModelModal.classList.remove('hidden');
+});
+newModelConfirm.addEventListener('click', doNewSchema);
+newModelCancel.addEventListener('click', () => newModelModal.classList.add('hidden'));
 
 btnSaveModel.addEventListener('click', async () => {
     const model = serializeModel();
-    const result = await window.electronAPI.saveDataWorkbenchModel(model);
+    const result = await window.electronAPI.saveDataWorkbenchModel(model, currentModelPath);
     if (result.error) showToast(`Save failed: ${result.error}`, 'error', 0);
     else if (result.success) {
+        setCurrentModelPath(result.filePath);
         const orig = btnSaveModel.textContent;
         btnSaveModel.textContent = '✓ Saved';
         setTimeout(() => { btnSaveModel.textContent = orig; }, 1500);
@@ -593,5 +765,29 @@ btnLoadModel.addEventListener('click', async () => {
     const result = await window.electronAPI.loadDataWorkbenchModel();
     if (result.canceled) return;
     if (result.error) { showToast(`Load failed: ${result.error}`, 'error', 0); return; }
+    setCurrentModelPath(result.filePath);
     deserializeModel(result.data);
+});
+
+// ── Snapshot save ──────────────────────────────────
+
+const snapshotModal = document.getElementById('snapshot-modal');
+
+btnSnapshotModel.addEventListener('click', () => {
+    snapshotModal.classList.remove('hidden');
+});
+
+document.getElementById('snapshot-modal-cancel').addEventListener('click', () => {
+    snapshotModal.classList.add('hidden');
+});
+
+document.getElementById('snapshot-modal-confirm').addEventListener('click', async () => {
+    snapshotModal.classList.add('hidden');
+    const model = serializeModel(true);
+    const defaultPath = currentModelPath
+        ? currentModelPath.replace(/\.json$/i, '-snapshot.json')
+        : 'workbench-snapshot.json';
+    const result = await window.electronAPI.saveDataWorkbenchModel(model, defaultPath);
+    if (result.error) showToast(`Snapshot save failed: ${result.error}`, 'error', 0);
+    else if (result.success) showToast('Snapshot saved', 'success', 3000);
 });

@@ -30,7 +30,7 @@ class RemoveDuplicatesCommand {
 
         this.window = createDarkWindow({
             width: 480,
-            height: 420,
+            height: 220,
             frame: false,
             resizable: false,
             alwaysOnTop: true

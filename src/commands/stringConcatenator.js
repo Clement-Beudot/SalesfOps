@@ -30,7 +30,7 @@ class StringConcatenatorCommand {
 
         this.window = createDarkWindow({
             width: 450,
-            height: 280,
+            height: 190,
             frame: false,
             resizable: false,
             alwaysOnTop: true

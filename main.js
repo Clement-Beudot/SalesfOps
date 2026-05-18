@@ -1,4 +1,4 @@
-const { app, Tray, Menu, ipcMain, globalShortcut, shell } = require('electron');
+const { app, Tray, Menu, ipcMain, globalShortcut, shell, BrowserWindow } = require('electron');
 const path = require('path');
 const SettingsManager = require('./src/services/settings');
 const CommandManager = require('./src/commands');
@@ -59,9 +59,20 @@ class Application {
             sfItems.push({ label: 'Search in Salesforce', click: () => this.commands.salesforceSearch.createWindow(), accelerator: await this.getShortcutLabel('searchInSalesforceShortcut') });
         if (await this.settings.get('sfdxOrgsActive'))
             sfItems.push({ label: 'Open Salesforce Org', click: () => this.commands.sfdxOrgs.createWindow(), accelerator: await this.getShortcutLabel('sfdxOrgsShortcut') });
+        if (await this.settings.get('soqlRunnerActive'))
+            sfItems.push({ label: 'SOQL Runner', click: () => this.commands.soqlRunner.createWindow(), accelerator: await this.getShortcutLabel('soqlRunnerShortcut') });
 
         if (sfItems.length > 0)
             menuItems.push({ label: 'Salesforce', enabled: false }, ...sfItems);
+
+        // ── Workbench ─────────────────────────────────────────────────────────
+        if (await this.settings.get('dataWorkbenchActive')) {
+            if (menuItems.length > 0) menuItems.push({ type: 'separator' });
+            menuItems.push(
+                { label: 'Workbench', enabled: false },
+                { label: 'Data Workbench', click: () => this.commands.dataWorkbench.createWindow() }
+            );
+        }
 
         // ── Data ──────────────────────────────────────────────────────────────
         const dataItems = [];
@@ -91,15 +102,6 @@ class Application {
             menuItems.push({ label: 'Other Tools', enabled: false }, ...otherItems);
         }
 
-        // ── Data Workbench ────────────────────────────────────────────────────
-        const dataWorkbenchActive = await this.settings.get('dataWorkbenchActive');
-        if (dataWorkbenchActive) {
-            if (menuItems.length > 0) menuItems.push({ type: 'separator' });
-            menuItems.push({
-                label: 'Data Workbench (beta)',
-                click: () => this.commands.dataWorkbench.createWindow()
-            });
-        }
 
         menuItems.push(
             { type: 'separator' },
@@ -199,6 +201,11 @@ class Application {
             await this.settings.set(key, value);
             await this.commands.setupShortcuts(globalShortcut);
             await this.updateTrayMenu();
+        });
+
+        ipcMain.on('resize-window', (event, height) => {
+            const win = BrowserWindow.fromWebContents(event.sender);
+            if (win) win.setSize(win.getSize()[0], Math.round(height), true);
         });
     }
 

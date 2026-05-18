@@ -131,6 +131,88 @@
         .settings-form {
             gap: 24px;
         }
+
+        /* ── Shortcut recorder ── */
+        .shortcut-recorder {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .shortcut-display-area {
+            flex: 1;
+            background: #1e1e1e;
+            border: 1px solid #333;
+            border-radius: 5px;
+            padding: 5px 10px;
+            min-height: 32px;
+            display: flex;
+            align-items: center;
+        }
+
+        .shortcut-display {
+            font-size: 14px;
+            letter-spacing: 0.03em;
+            color: #e0e0e0;
+        }
+
+        .shortcut-display:empty::before {
+            content: 'None';
+            color: #555;
+            font-style: italic;
+            font-size: 12px;
+        }
+
+        .shortcut-record-btn {
+            background: #1e1e1e;
+            border: 1px solid #444;
+            border-radius: 5px;
+            color: #9ca3af;
+            font-size: 12px;
+            font-family: inherit;
+            padding: 5px 12px;
+            cursor: pointer;
+            white-space: nowrap;
+            flex-shrink: 0;
+            transition: border-color 0.1s, color 0.1s;
+        }
+
+        .shortcut-record-btn:hover {
+            border-color: #6366f1;
+            color: #a5b4fc;
+        }
+
+        .shortcut-record-btn.recording {
+            border-color: #ef4444;
+            color: #fca5a5;
+            animation: pulse-record 1s ease-in-out infinite;
+        }
+
+        @keyframes pulse-record {
+            0%, 100% { border-color: #ef4444; opacity: 1; }
+            50% { border-color: #b91c1c; opacity: 0.7; }
+        }
+
+        .shortcut-clear-btn {
+            background: none;
+            border: none;
+            color: #555;
+            font-size: 14px;
+            cursor: pointer;
+            padding: 0 2px;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+
+        .shortcut-clear-btn:hover { color: #e0e0e0; }
+
+        .shortcut-conflict {
+            font-size: 11px;
+            color: #f87171;
+            margin-top: 3px;
+        }
+
+        .shortcut-conflict:empty { display: none; }
     </style>
 </head>
 <body>
@@ -145,8 +227,8 @@
                     <button type="button" class="tab-btn" data-panel="shortcuts">Shortcuts</button>
                     <button type="button" class="tab-btn" data-panel="searches">Custom Searches</button>
                     <button type="button" class="tab-btn" data-panel="snippets">Snippets</button>
-                    <button type="button" class="tab-btn" data-panel="sfcli">Salesforce CLI</button>
-                    <button type="button" class="tab-btn lab-btn" id="labTabBtn" data-panel="lab" style="display:none">🔬 Lab</button>
+                    <button type="button" class="tab-btn" data-panel="workbench">Workbench</button>
+                    <button type="button" class="tab-btn" data-panel="sfcli" id="sfcliTabBtn" style="display:none">Salesforce CLI</button>
                 </div>
                 <div class="sidebar-footer">
                     <div id="save-message" class="save-message"></div>
@@ -187,26 +269,10 @@
                     <div class="panel-title">Shortcuts</div>
                     <div class="settings-form" style="display:flex;flex-direction:column;gap:24px;">
 
-                        <div class="shortcut-info">
-                            <p class="text-sm text-gray-400 mb-2">How to set up shortcuts:</p>
-                            <ul class="text-sm text-gray-400 list-disc pl-6">
-                                <li>Use <code>CommandOrControl</code> for the main modifier key (Command ⌘ on macOS, Ctrl on Windows/Linux)</li>
-                                <li>Add modifiers with <code>+</code>: <code>Shift</code>, <code>Alt</code> (or <code>Option</code> on macOS)</li>
-                                <li>End with a letter or number: <code>CommandOrControl+Shift+O</code></li>
-                                <li>Examples:
-                                    <ul class="list-disc pl-6 mt-1">
-                                        <li><code>CommandOrControl+Shift+O</code></li>
-                                        <li><code>CommandOrControl+Alt+S</code></li>
-                                        <li><code>CommandOrControl+Shift+1</code></li>
-                                    </ul>
-                                </li>
-                            </ul>
-                        </div>
-
                         <div class="form-group shortcut-group">
                             <div class="shortcut-header">
                                 <div class="tooltip-container">
-                                    <label for="openSalesforceIdShortcut">Open Salesforce ID</label>
+                                    <label>Open Salesforce ID</label>
                                     <span class="tooltip-icon">💡</span>
                                     <span class="tooltip-text">Quickly open any Salesforce record by entering its ID. The shortcut will open a small input window where you can paste or type any Salesforce ID, and pressing Enter will open it in your default browser.</span>
                                 </div>
@@ -215,14 +281,21 @@
                                     <label for="openSalesforceIdActive">Active</label>
                                 </div>
                             </div>
-                            <input type="text" id="openSalesforceIdShortcut" data-setting placeholder="CommandOrControl+Shift+O">
+                            <div class="shortcut-recorder">
+                                <div class="shortcut-display-area">
+                                    <span class="shortcut-display"></span>
+                                </div>
+                                <button type="button" class="shortcut-record-btn">Record key</button>
+                                <button type="button" class="shortcut-clear-btn" title="Clear shortcut">✕</button>
+                                <input type="hidden" id="openSalesforceIdShortcut" data-setting>
+                            </div>
                             <small class="help-text">Quickly open a Salesforce record by entering its ID</small>
                         </div>
 
                         <div class="form-group shortcut-group">
                             <div class="shortcut-header">
                                 <div class="tooltip-container">
-                                    <label for="concatenateStringShortcut">Concatenate Strings</label>
+                                    <label>Concatenate Strings</label>
                                     <span class="tooltip-icon">💡</span>
                                     <span class="tooltip-text">Format a list of IDs or strings into a SOQL-ready IN clause. Paste your list of values (separated by spaces or new lines) and get them automatically wrapped in quotes and parentheses, ready to be used in SOQL queries.</span>
                                 </div>
@@ -231,14 +304,21 @@
                                     <label for="concatenateStringActive">Active</label>
                                 </div>
                             </div>
-                            <input type="text" id="concatenateStringShortcut" data-setting placeholder="CommandOrControl+Shift+C">
+                            <div class="shortcut-recorder">
+                                <div class="shortcut-display-area">
+                                    <span class="shortcut-display"></span>
+                                </div>
+                                <button type="button" class="shortcut-record-btn">Record key</button>
+                                <button type="button" class="shortcut-clear-btn" title="Clear shortcut">✕</button>
+                                <input type="hidden" id="concatenateStringShortcut" data-setting>
+                            </div>
                             <small class="help-text">Format a list of IDs into a SOQL-ready IN clause</small>
                         </div>
 
                         <div class="form-group shortcut-group">
                             <div class="shortcut-header">
                                 <div class="tooltip-container">
-                                    <label for="removeDuplicatesShortcut">Remove Duplicates</label>
+                                    <label>Remove Duplicates</label>
                                     <span class="tooltip-icon">💡</span>
                                     <span class="tooltip-text">Paste a list of strings (separated by spaces or new lines) and instantly identify duplicates. Shows the unique values and the list of duplicates, each copyable to clipboard.</span>
                                 </div>
@@ -247,14 +327,21 @@
                                     <label for="removeDuplicatesActive">Active</label>
                                 </div>
                             </div>
-                            <input type="text" id="removeDuplicatesShortcut" data-setting placeholder="CommandOrControl+Shift+D">
+                            <div class="shortcut-recorder">
+                                <div class="shortcut-display-area">
+                                    <span class="shortcut-display"></span>
+                                </div>
+                                <button type="button" class="shortcut-record-btn">Record key</button>
+                                <button type="button" class="shortcut-clear-btn" title="Clear shortcut">✕</button>
+                                <input type="hidden" id="removeDuplicatesShortcut" data-setting>
+                            </div>
                             <small class="help-text">Find and extract duplicates from a list of strings</small>
                         </div>
 
                         <div class="form-group shortcut-group">
                             <div class="shortcut-header">
                                 <div class="tooltip-container">
-                                    <label for="searchInSalesforceShortcut">Search in Salesforce</label>
+                                    <label>Search in Salesforce</label>
                                     <span class="tooltip-icon">💡</span>
                                     <span class="tooltip-text">Perform a global search in Salesforce directly from anywhere. The shortcut opens a search input window — just type your search terms and press Enter to search across all Salesforce objects.</span>
                                 </div>
@@ -263,14 +350,21 @@
                                     <label for="searchInSalesforceActive">Active</label>
                                 </div>
                             </div>
-                            <input type="text" id="searchInSalesforceShortcut" data-setting placeholder="CommandOrControl+Shift+S">
+                            <div class="shortcut-recorder">
+                                <div class="shortcut-display-area">
+                                    <span class="shortcut-display"></span>
+                                </div>
+                                <button type="button" class="shortcut-record-btn">Record key</button>
+                                <button type="button" class="shortcut-clear-btn" title="Clear shortcut">✕</button>
+                                <input type="hidden" id="searchInSalesforceShortcut" data-setting>
+                            </div>
                             <small class="help-text">Perform a global search in Salesforce</small>
                         </div>
 
                         <div class="form-group shortcut-group">
                             <div class="shortcut-header">
                                 <div class="tooltip-container">
-                                    <label for="openMultipleIdsShortcut">Open Multiple IDs</label>
+                                    <label>Open Multiple IDs</label>
                                     <span class="tooltip-icon">💡</span>
                                     <span class="tooltip-text">Open multiple Salesforce records simultaneously. Paste a list of IDs (separated by spaces or new lines) and they will all open in separate browser tabs. Useful for batch reviewing of records.</span>
                                 </div>
@@ -279,14 +373,21 @@
                                     <label for="openMultipleIdsActive">Active</label>
                                 </div>
                             </div>
-                            <input type="text" id="openMultipleIdsShortcut" data-setting placeholder="CommandOrControl+Shift+M">
+                            <div class="shortcut-recorder">
+                                <div class="shortcut-display-area">
+                                    <span class="shortcut-display"></span>
+                                </div>
+                                <button type="button" class="shortcut-record-btn">Record key</button>
+                                <button type="button" class="shortcut-clear-btn" title="Clear shortcut">✕</button>
+                                <input type="hidden" id="openMultipleIdsShortcut" data-setting>
+                            </div>
                             <small class="help-text">Open multiple Salesforce records simultaneously</small>
                         </div>
 
                         <div class="form-group shortcut-group">
                             <div class="shortcut-header">
                                 <div class="tooltip-container">
-                                    <label for="extractValueShortcut">Extract JSON Values</label>
+                                    <label>Extract JSON Values</label>
                                     <span class="tooltip-icon">💡</span>
                                     <span class="tooltip-text">Extract and format specific values from JSON data. Paste your JSON, select the field you want to extract, and get a clean list of values copied to your clipboard. Perfect for data extraction and analysis.</span>
                                 </div>
@@ -295,14 +396,21 @@
                                     <label for="extractValueActive">Active</label>
                                 </div>
                             </div>
-                            <input type="text" id="extractValueShortcut" data-setting placeholder="CommandOrControl+Shift+E">
+                            <div class="shortcut-recorder">
+                                <div class="shortcut-display-area">
+                                    <span class="shortcut-display"></span>
+                                </div>
+                                <button type="button" class="shortcut-record-btn">Record key</button>
+                                <button type="button" class="shortcut-clear-btn" title="Clear shortcut">✕</button>
+                                <input type="hidden" id="extractValueShortcut" data-setting>
+                            </div>
                             <small class="help-text">Extract and format values from JSON data</small>
                         </div>
 
                         <div class="form-group shortcut-group">
                             <div class="shortcut-header">
                                 <div class="tooltip-container">
-                                    <label for="updateValuesShortcut">Update CSV/JSON Values</label>
+                                    <label>Update CSV/JSON Values</label>
                                     <span class="tooltip-icon">💡</span>
                                     <span class="tooltip-text">Update multiple values from a Salesforce CSV or JSON</span>
                                 </div>
@@ -311,7 +419,14 @@
                                     <label for="updateValuesActive">Active</label>
                                 </div>
                             </div>
-                            <input type="text" id="updateValuesShortcut" data-setting placeholder="CommandOrControl+Shift+U">
+                            <div class="shortcut-recorder">
+                                <div class="shortcut-display-area">
+                                    <span class="shortcut-display"></span>
+                                </div>
+                                <button type="button" class="shortcut-record-btn">Record key</button>
+                                <button type="button" class="shortcut-clear-btn" title="Clear shortcut">✕</button>
+                                <input type="hidden" id="updateValuesShortcut" data-setting>
+                            </div>
                             <small class="help-text">Update and format values from JSON or CSV data</small>
                         </div>
 
@@ -326,7 +441,7 @@
                         <div class="form-group shortcut-group">
                             <div class="shortcut-header">
                                 <div class="tooltip-container">
-                                    <label for="customSearchShortcut">Custom Search Shortcut</label>
+                                    <label>Custom Search Shortcut</label>
                                     <span class="tooltip-icon">💡</span>
                                     <span class="tooltip-text">Access your custom search configurations. Configure and use predefined search templates to quickly search in specific domains or with specific parameters. Customize search URLs and parameters in settings.</span>
                                 </div>
@@ -335,7 +450,14 @@
                                     <label for="customSearchActive">Active</label>
                                 </div>
                             </div>
-                            <input type="text" id="customSearchShortcut" data-setting placeholder="CommandOrControl+Shift+F">
+                            <div class="shortcut-recorder">
+                                <div class="shortcut-display-area">
+                                    <span class="shortcut-display"></span>
+                                </div>
+                                <button type="button" class="shortcut-record-btn">Record key</button>
+                                <button type="button" class="shortcut-clear-btn" title="Clear shortcut">✕</button>
+                                <input type="hidden" id="customSearchShortcut" data-setting>
+                            </div>
                             <small class="help-text">Access your custom search configurations</small>
                         </div>
 
@@ -358,7 +480,7 @@
                         <div class="form-group shortcut-group">
                             <div class="shortcut-header">
                                 <div class="tooltip-container">
-                                    <label for="snippetsShortcut">Text Snippets Shortcut</label>
+                                    <label>Text Snippets Shortcut</label>
                                     <span class="tooltip-icon">💡</span>
                                     <span class="tooltip-text">Access your text snippets. Configure frequently used text blocks that can be quickly copied to your clipboard. Choose a keyword and the corresponding text to copy.</span>
                                 </div>
@@ -367,7 +489,14 @@
                                     <label for="snippetsActive">Active</label>
                                 </div>
                             </div>
-                            <input type="text" id="snippetsShortcut" data-setting placeholder="CommandOrControl+Shift+T">
+                            <div class="shortcut-recorder">
+                                <div class="shortcut-display-area">
+                                    <span class="shortcut-display"></span>
+                                </div>
+                                <button type="button" class="shortcut-record-btn">Record key</button>
+                                <button type="button" class="shortcut-clear-btn" title="Clear shortcut">✕</button>
+                                <input type="hidden" id="snippetsShortcut" data-setting>
+                            </div>
                             <small class="help-text">Quickly copy frequently used text snippets to clipboard</small>
                         </div>
 
@@ -382,6 +511,63 @@
                     </div>
                 </div>
 
+                <!-- Workbench -->
+                <div class="tab-panel" id="panel-workbench">
+                    <div class="panel-title">Data Workbench <span style="font-size:9px;font-weight:700;letter-spacing:.05em;background:#1a3a1a;color:#4ade80;border:1px solid #2a5a2a;border-radius:4px;padding:1px 5px;vertical-align:middle;">BETA</span></div>
+                    <div class="settings-form" style="display:flex;flex-direction:column;gap:24px;">
+
+                        <div class="form-group shortcut-group">
+                            <div class="shortcut-header">
+                                <div class="tooltip-container">
+                                    <label>Enable Data Workbench</label>
+                                    <span class="tooltip-icon">💡</span>
+                                    <span class="tooltip-text">Show the Data Workbench entry in the tray menu. The workbench lets you query, transform and combine Salesforce data tables.</span>
+                                </div>
+                                <div class="active-toggle">
+                                    <input type="checkbox" id="dataWorkbenchActive" data-setting>
+                                    <label for="dataWorkbenchActive">Active</label>
+                                </div>
+                            </div>
+                            <small class="help-text">Show the Data Workbench in the tray menu</small>
+                        </div>
+
+                        <div id="workbench-sfcli-options" style="display:none;flex-direction:column;gap:24px;">
+
+                        <div class="form-group shortcut-group">
+                            <div class="shortcut-header">
+                                <div class="tooltip-container">
+                                    <label>SOQL Queries</label>
+                                    <span class="tooltip-icon">💡</span>
+                                    <span class="tooltip-text">Allow running SOQL queries against Salesforce orgs in the Data Workbench. Requires Salesforce CLI (sf) to be installed and orgs authenticated.</span>
+                                </div>
+                                <div class="active-toggle">
+                                    <input type="checkbox" id="workbenchSoqlActive" data-setting>
+                                    <label for="workbenchSoqlActive">Active</label>
+                                </div>
+                            </div>
+                            <small class="help-text">Show the SOQL query tab and allow fetching data directly from connected orgs</small>
+                        </div>
+
+                        <div class="form-group shortcut-group">
+                            <div class="shortcut-header">
+                                <div class="tooltip-container">
+                                    <label>DML Operations</label>
+                                    <span class="tooltip-icon">💡</span>
+                                    <span class="tooltip-text">Allow creating DML action cards to insert, update, or upsert records in Salesforce orgs. Use with caution — DML operations modify live data.</span>
+                                </div>
+                                <div class="active-toggle">
+                                    <input type="checkbox" id="workbenchDmlActive" data-setting>
+                                    <label for="workbenchDmlActive">Active</label>
+                                </div>
+                            </div>
+                            <small class="help-text">Show the DML card button and allow pushing records to Salesforce orgs</small>
+                        </div>
+
+                        </div><!-- /#workbench-sfcli-options -->
+
+                    </div>
+                </div>
+
                 <!-- Salesforce CLI -->
                 <div class="tab-panel" id="panel-sfcli">
                     <div class="panel-title">Salesforce CLI</div>
@@ -390,40 +576,47 @@
                         <div class="form-group shortcut-group">
                             <div class="shortcut-header">
                                 <div class="tooltip-container">
-                                    <label for="sfdxOrgsShortcut">Open Salesforce Org Shortcut</label>
+                                    <label>Open Salesforce Org</label>
                                     <span class="tooltip-icon">💡</span>
-                                    <span class="tooltip-text">Display the list of connected Salesforce orgs and open one in your browser with a single click. Requires Salesforce CLI (sf) to be installed.</span>
+                                    <span class="tooltip-text">Display the list of connected Salesforce orgs and open one in your browser with a single click.</span>
                                 </div>
                                 <div class="active-toggle">
                                     <input type="checkbox" id="sfdxOrgsActive" data-setting>
                                     <label for="sfdxOrgsActive">Active</label>
                                 </div>
                             </div>
-                            <input type="text" id="sfdxOrgsShortcut" data-setting placeholder="CommandOrControl+Shift+L">
+                            <div class="shortcut-recorder">
+                                <div class="shortcut-display-area">
+                                    <span class="shortcut-display"></span>
+                                </div>
+                                <button type="button" class="shortcut-record-btn">Record key</button>
+                                <button type="button" class="shortcut-clear-btn" title="Clear shortcut">✕</button>
+                                <input type="hidden" id="sfdxOrgsShortcut" data-setting>
+                            </div>
                             <small class="help-text">Quickly open a connected Salesforce org in your browser</small>
                         </div>
-
-                    </div>
-                </div>
-
-                <!-- Lab -->
-                <div class="tab-panel" id="panel-lab">
-                    <div class="panel-title">🔬 Lab</div>
-                    <div class="settings-form" style="display:flex;flex-direction:column;gap:24px;">
 
                         <div class="form-group shortcut-group">
                             <div class="shortcut-header">
                                 <div class="tooltip-container">
-                                    <label for="dataWorkbenchActive">Data Workbench <span style="font-size:9px;font-weight:700;letter-spacing:.05em;background:#1a3a1a;color:#4ade80;border:1px solid #2a5a2a;border-radius:4px;padding:1px 5px;vertical-align:middle;">BETA</span></label>
+                                    <label>SOQL Runner <span style="font-size:9px;font-weight:700;letter-spacing:.05em;background:#1a3a1a;color:#4ade80;border:1px solid #2a5a2a;border-radius:4px;padding:1px 5px;vertical-align:middle;">BETA</span></label>
                                     <span class="tooltip-icon">💡</span>
-                                    <span class="tooltip-text">Enable the Data Workbench — a SOQL query and data transformation tool. Beta feature. Requires Salesforce CLI (sf) to be installed.</span>
+                                    <span class="tooltip-text">Quick floating SOQL query window with field autocomplete.</span>
                                 </div>
                                 <div class="active-toggle">
-                                    <input type="checkbox" id="dataWorkbenchActive" data-setting>
-                                    <label for="dataWorkbenchActive">Active</label>
+                                    <input type="checkbox" id="soqlRunnerActive" data-setting>
+                                    <label for="soqlRunnerActive">Active</label>
                                 </div>
                             </div>
-                            <small class="help-text">Query, transform and combine Salesforce data tables directly from the tray</small>
+                            <div class="shortcut-recorder">
+                                <div class="shortcut-display-area">
+                                    <span class="shortcut-display"></span>
+                                </div>
+                                <button type="button" class="shortcut-record-btn">Record key</button>
+                                <button type="button" class="shortcut-clear-btn" title="Clear shortcut">✕</button>
+                                <input type="hidden" id="soqlRunnerShortcut" data-setting>
+                            </div>
+                            <small class="help-text">Run SOQL queries from anywhere with field autocomplete</small>
                         </div>
 
                     </div>
@@ -504,29 +697,196 @@
             button.closest('.snippet-item').remove();
         }
 
-        // Lab reveal: type "data" outside an input field
+        // Salesforce CLI tab reveal: type "sfdx" outside an input → verify sf CLI is installed
         (function () {
             let buf = '';
             let timer = null;
-            document.addEventListener('keydown', e => {
+            let checking = false;
+            document.addEventListener('keydown', async e => {
                 const tag = document.activeElement?.tagName;
                 if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
                 if (e.key.length !== 1) return;
                 buf += e.key.toLowerCase();
                 clearTimeout(timer);
                 timer = setTimeout(() => { buf = ''; }, 2000);
-                if (buf.includes('data')) {
-                    document.getElementById('labTabBtn').style.display = '';
-                    buf = '';
+                if (!buf.includes('sfdx')) return;
+                buf = '';
+                if (checking) return;
+                checking = true;
+                const result = await window.electronAPI.checkSfCli();
+                checking = false;
+                if (result.available) {
+                    document.getElementById('sfcliTabBtn').style.display = '';
+                    document.getElementById('workbench-sfcli-options').style.display = 'flex';
+                    // Persist so the tab shows automatically next time
+                    await window.electronAPI.setSetting('sfdxVerified', true);
+                } else {
+                    alert('Salesforce CLI (sf) is not installed or not found in PATH.\nInstall it from https://developer.salesforce.com/tools/salesforcecli');
                 }
             });
         })();
 
+        // ── Shortcut recorder ──────────────────────────────────
+
+        function displayAccelerator(acc) {
+            if (!acc) return '';
+            return acc.split('+').map(p => {
+                switch (p) {
+                    case 'CommandOrControl':
+                    case 'Command': return '⌘';
+                    case 'Control': return 'Ctrl';
+                    case 'Shift': return '⇧';
+                    case 'Alt':
+                    case 'Option': return '⌥';
+                    default: return p;
+                }
+            }).join(' ');
+        }
+
+        // Map e.code (physical key) → Electron accelerator key name
+        function codeToAcceleratorKey(code) {
+            if (/^Key([A-Z])$/.test(code)) return code.slice(3);   // KeyA → A
+            if (/^Digit(\d)$/.test(code)) return code.slice(5);    // Digit1 → 1
+            if (/^F(\d+)$/.test(code)) return code;                // F1, F12 …
+            const map = {
+                Space: 'Space', Enter: 'Return', NumpadEnter: 'Return',
+                Backspace: 'Backspace', Delete: 'Delete', Tab: 'Tab',
+                ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right',
+                Home: 'Home', End: 'End', PageUp: 'PageUp', PageDown: 'PageDown',
+                Insert: 'Insert', Escape: 'Escape',
+                Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']',
+                Backslash: '\\', Semicolon: ';', Quote: "'", Comma: ',',
+                Period: '.', Slash: '/', Backquote: '`',
+                NumpadAdd: 'numadd', NumpadSubtract: 'numsub',
+                NumpadMultiply: 'nummult', NumpadDivide: 'numdiv',
+                NumpadDecimal: 'numdec',
+                Numpad0: 'num0', Numpad1: 'num1', Numpad2: 'num2', Numpad3: 'num3',
+                Numpad4: 'num4', Numpad5: 'num5', Numpad6: 'num6', Numpad7: 'num7',
+                Numpad8: 'num8', Numpad9: 'num9',
+            };
+            return map[code] || null;
+        }
+
+        function recorderLabel(recorder) {
+            const group = recorder.closest('.shortcut-group');
+            const lbl   = group?.querySelector('label');
+            return lbl ? (lbl.childNodes[0]?.textContent?.trim() || lbl.textContent.trim()) : '';
+        }
+
+        function refreshAllConflicts() {
+            const recorders = [...document.querySelectorAll('.shortcut-recorder')];
+            const byAcc = new Map();
+            recorders.forEach(r => {
+                const val = r.querySelector('input[type="hidden"]').value;
+                if (!val) return;
+                if (!byAcc.has(val)) byAcc.set(val, []);
+                byAcc.get(val).push(r);
+            });
+            recorders.forEach(r => {
+                const conflictEl = r.nextElementSibling?.classList.contains('shortcut-conflict')
+                    ? r.nextElementSibling : null;
+                if (!conflictEl) return;
+                const val = r.querySelector('input[type="hidden"]').value;
+                if (val && (byAcc.get(val)?.length ?? 0) > 1) {
+                    const others = byAcc.get(val).filter(o => o !== r);
+                    conflictEl.textContent = `Already used by: ${others.map(recorderLabel).join(', ')}`;
+                } else {
+                    conflictEl.textContent = '';
+                }
+            });
+        }
+
+        function initShortcutRecorders() {
+            document.querySelectorAll('.shortcut-recorder').forEach(recorder => {
+                const hiddenInput = recorder.querySelector('input[type="hidden"]');
+                const display     = recorder.querySelector('.shortcut-display');
+                const recordBtn   = recorder.querySelector('.shortcut-record-btn');
+                const clearBtn    = recorder.querySelector('.shortcut-clear-btn');
+
+                // Insert conflict message element right after the recorder div
+                const conflictEl = document.createElement('small');
+                conflictEl.className = 'shortcut-conflict';
+                recorder.after(conflictEl);
+
+                display.textContent = displayAccelerator(hiddenInput.value);
+
+                let listening = false;
+                let keydownHandler = null;
+                let clickOutsideHandler = null;
+
+                function stopListening() {
+                    if (!listening) return;
+                    listening = false;
+                    recordBtn.textContent = 'Record key';
+                    recordBtn.classList.remove('recording');
+                    document.removeEventListener('keydown', keydownHandler, true);
+                    document.removeEventListener('click', clickOutsideHandler, true);
+                }
+
+                function startListening() {
+                    if (listening) { stopListening(); return; }
+                    listening = true;
+                    recordBtn.textContent = 'Press keys…';
+                    recordBtn.classList.add('recording');
+
+                    keydownHandler = (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+
+                        if (e.code === 'Escape') { stopListening(); return; }
+
+                        const modifierCodes = new Set(['MetaLeft', 'MetaRight', 'ControlLeft', 'ControlRight',
+                                                       'ShiftLeft', 'ShiftRight', 'AltLeft', 'AltRight',
+                                                       'CapsLock', 'NumLock', 'Tab', 'OSLeft', 'OSRight']);
+                        if (modifierCodes.has(e.code)) return;
+
+                        const key = codeToAcceleratorKey(e.code);
+                        if (!key) return;
+
+                        const mods = [];
+                        if (e.metaKey || e.ctrlKey) mods.push('CommandOrControl');
+                        if (e.altKey) mods.push('Alt');
+                        if (e.shiftKey) mods.push('Shift');
+
+                        if (!mods.length) return;
+
+                        const accelerator = [...mods, key].join('+');
+                        hiddenInput.value = accelerator;
+                        display.textContent = displayAccelerator(accelerator);
+                        stopListening();
+                        refreshAllConflicts();
+                    };
+
+                    clickOutsideHandler = (e) => {
+                        if (!recorder.contains(e.target)) stopListening();
+                    };
+
+                    document.addEventListener('keydown', keydownHandler, true);
+                    setTimeout(() => document.addEventListener('click', clickOutsideHandler, true), 100);
+                }
+
+                recordBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    startListening();
+                });
+
+                clearBtn.addEventListener('click', () => {
+                    hiddenInput.value = '';
+                    display.textContent = '';
+                    stopListening();
+                    refreshAllConflicts();
+                });
+            });
+
+            refreshAllConflicts();
+        }
+
         document.addEventListener('DOMContentLoaded', async () => {
             const settings = await window.electronAPI.getSettings();
 
-            if (settings.dataWorkbenchActive === true) {
-                document.getElementById('labTabBtn').style.display = '';
+            if (settings.sfdxVerified === true) {
+                document.getElementById('sfcliTabBtn').style.display = '';
+                document.getElementById('workbench-sfcli-options').style.display = 'flex';
             }
 
             document.querySelectorAll('[data-setting]').forEach(input => {
@@ -536,6 +896,8 @@
                     input.value = settings[input.id] || '';
                 }
             });
+
+            initShortcutRecorders();
 
             if (settings.customSearches && Array.isArray(settings.customSearches)) {
                 settings.customSearches.forEach(search => {

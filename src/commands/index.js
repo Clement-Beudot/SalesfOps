@@ -10,6 +10,9 @@ const SfdxOrgsCommand = require('./sfdxOrgs');
 const RemoveDuplicatesCommand = require('./removeDuplicates');
 const DataWorkbenchCommand = require('./dataWorkbench');
 const DocsCommand = require('./docs');
+const SalesforceRestCommand = require('./salesforceRestCommand');
+const SoqlRunnerCommand = require('./soqlRunner');
+const QueryLibraryCommand = require('./queryLibraryCommand');
 
 
 /**
@@ -36,6 +39,9 @@ class CommandManager {
         this.removeDuplicates = new RemoveDuplicatesCommand(app, settingsManager);
         this.dataWorkbench = new DataWorkbenchCommand(app, settingsManager);
         this.docs = new DocsCommand(app, settingsManager);
+        this.salesforceRest = new SalesforceRestCommand();
+        this.soqlRunner = new SoqlRunnerCommand(app, settingsManager);
+        this.queryLibrary = new QueryLibraryCommand(settingsManager);
     }
 
     /**
@@ -55,6 +61,9 @@ class CommandManager {
         this.removeDuplicates.setupIpc(ipcMain);
         this.dataWorkbench.setupIpc(ipcMain);
         this.docs.setupIpc(ipcMain);
+        this.salesforceRest.setupIpc(ipcMain);
+        this.soqlRunner.setupIpc(ipcMain);
+        this.queryLibrary.setupIpc(ipcMain);
     }
 
     /**
@@ -132,6 +141,13 @@ class CommandManager {
             const shortcut = await this.settings.get('removeDuplicatesShortcut');
             if (shortcut) {
                 globalShortcut.register(shortcut, () => this.removeDuplicates.createWindow());
+            }
+        }
+
+        if (await this.settings.get('soqlRunnerActive')) {
+            const shortcut = await this.settings.get('soqlRunnerShortcut');
+            if (shortcut) {
+                globalShortcut.register(shortcut, () => this.soqlRunner.createWindow());
             }
         }
     }

@@ -596,6 +596,238 @@ describe('computeFromRecipe — enrich', () => {
         expect(r.columns).toEqual([]);
         expect(r.rows).toEqual([]);
     });
+
+    // ── v2 colId format — right table has no columnDefs (paste table) ─────────
+
+    test('v2 selectedCols: right paste table (no columnDefs) columns appear in result', () => {
+        // Reproduces the bug where colId lookup failed for tables without columnDefs,
+        // causing right-side columns to be silently dropped from the enrich result.
+        const groupResult = {
+            id: 'tGrp', name: 'Group by groupe', source: 'result',
+            columns: ['Groupe', 'count_Groupe'],
+            columnDefs: [
+                { id: 'Groupe',             name: 'Groupe' },
+                { id: 'c_count_mp8pbwsq',   name: 'count_Groupe' },
+            ],
+            rows: [['Group 1', '3'], ['Group 2', '5'], ['Group 3', '4']]
+        };
+        const prices = {
+            id: 'tPrices', name: 'VolumePrices', source: 'paste',
+            columns: ['NumberOfStructures', 'ExpectedAmount'],
+            // no columnDefs — paste table
+            rows: [['3', '30'], ['4', '40'], ['5', '50']]
+        };
+        const r = computeFromRecipe({
+            op: 'enrich',
+            leftId: 'tGrp',    leftCol:  'c_count_mp8pbwsq',
+            rightId: 'tPrices', rightCol: 'NumberOfStructures',
+            caseInsensitive: false,
+            selectedCols: [
+                { colId: 'Groupe' },
+                { colId: 'c_count_mp8pbwsq' },
+                { colId: 'NumberOfStructures' },
+                { colId: 'ExpectedAmount' },
+            ]
+        }, [groupResult, prices]);
+
+        expect(r.columns).toEqual(['Groupe', 'count_Groupe', 'NumberOfStructures', 'ExpectedAmount']);
+        expect(r.rows).toHaveLength(3);
+        const grp1 = r.rows.find(row => row[0] === 'Group 1');
+        expect(grp1).toEqual(['Group 1', '3', '3', '30']);
+        const grp2 = r.rows.find(row => row[0] === 'Group 2');
+        expect(grp2).toEqual(['Group 2', '5', '5', '50']);
+    });
+
+    test('v2 selectedCols: left paste table (no columnDefs) columns appear in result', () => {
+        const pasteLeft = {
+            id: 'tPL', name: 'Left', source: 'paste',
+            columns: ['Key', 'Value'],
+            rows: [['A', 'alpha'], ['B', 'beta'], ['C', 'gamma']]
+        };
+        const refRight = {
+            id: 'tPR', name: 'Right', source: 'result',
+            columns: ['Code', 'Label'],
+            columnDefs: [{ id: 'cCode', name: 'Code' }, { id: 'cLabel', name: 'Label' }],
+            rows: [['A', 'Label A'], ['B', 'Label B']]
+        };
+        const r = computeFromRecipe({
+            op: 'enrich',
+            leftId: 'tPL', leftCol: 'Key',
+            rightId: 'tPR', rightCol: 'cCode',
+            selectedCols: [{ colId: 'Key' }, { colId: 'Value' }, { colId: 'cLabel' }]
+        }, [pasteLeft, refRight]);
+
+        expect(r.columns).toEqual(['Key', 'Value', 'Label']);
+        expect(r.rows.find(row => row[0] === 'A')).toEqual(['A', 'alpha', 'Label A']);
+        expect(r.rows.find(row => row[0] === 'C')).toEqual(['C', 'gamma', '']); // no match
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// caseInsensitive matching — enrich / filter / missing
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('caseInsensitive matching', () => {
+
+    const emails = {
+        id: 'tEmails', ref: 'emails', name: 'Emails',
+        columns: ['Email', 'Name'],
+        rows: [
+            ['contact@gmail.com',  'Alice'],
+            ['SUPPORT@ACME.COM',   'Bob'],
+            ['Info@Example.com',   'Carol'],
+            ['unknown@test.com',   'Dave'],
+        ]
+    };
+
+    const blocklist = {
+        id: 'tBlock', ref: 'blocklist', name: 'Blocklist',
+        columns: ['Email'],
+        rows: [
+            ['CONTACT@GMAIL.COM'],   // differs only in case
+            ['support@acme.com'],    // differs only in case
+        ]
+    };
+
+    const localTables = [emails, blocklist];
+
+    // ── filter ────────────────────────────────────────────────────────────────
+
+    describe('filter', () => {
+        test('case-sensitive (default): CONTACT@GMAIL.COM ≠ contact@gmail.com → no match', () => {
+            const r = computeFromRecipe({
+                op: 'filter',
+                leftId: 'tEmails', leftCol: 'Email',
+                rightId: 'tBlock', rightCol: 'Email',
+            }, localTables);
+            expect(r.rows.map(r => r[0])).toEqual([]);
+        });
+
+        test('caseInsensitive: matches regardless of case', () => {
+            const r = computeFromRecipe({
+                op: 'filter',
+                leftId: 'tEmails', leftCol: 'Email',
+                rightId: 'tBlock', rightCol: 'Email',
+                caseInsensitive: true,
+            }, localTables);
+            expect(r.rows.map(r => r[0])).toEqual(['contact@gmail.com', 'SUPPORT@ACME.COM']);
+        });
+
+        test('caseInsensitive: unmatched rows excluded', () => {
+            const r = computeFromRecipe({
+                op: 'filter',
+                leftId: 'tEmails', leftCol: 'Email',
+                rightId: 'tBlock', rightCol: 'Email',
+                caseInsensitive: true,
+            }, localTables);
+            expect(r.rows.map(r => r[0])).not.toContain('Info@Example.com');
+            expect(r.rows.map(r => r[0])).not.toContain('unknown@test.com');
+        });
+    });
+
+    // ── missing ───────────────────────────────────────────────────────────────
+
+    describe('missing', () => {
+        test('case-sensitive (default): CONTACT@GMAIL.COM ≠ contact@gmail.com → all rows kept', () => {
+            const r = computeFromRecipe({
+                op: 'missing',
+                leftId: 'tEmails', leftCol: 'Email',
+                rightId: 'tBlock', rightCol: 'Email',
+            }, localTables);
+            expect(r.rows).toHaveLength(4);
+        });
+
+        test('caseInsensitive: matched rows excluded', () => {
+            const r = computeFromRecipe({
+                op: 'missing',
+                leftId: 'tEmails', leftCol: 'Email',
+                rightId: 'tBlock', rightCol: 'Email',
+                caseInsensitive: true,
+            }, localTables);
+            expect(r.rows.map(r => r[0])).toEqual(['Info@Example.com', 'unknown@test.com']);
+        });
+
+        test('caseInsensitive: result keeps left columns only', () => {
+            const r = computeFromRecipe({
+                op: 'missing',
+                leftId: 'tEmails', leftCol: 'Email',
+                rightId: 'tBlock', rightCol: 'Email',
+                caseInsensitive: true,
+            }, localTables);
+            expect(r.columns).toEqual(emails.columns);
+        });
+    });
+
+    // ── enrich ────────────────────────────────────────────────────────────────
+
+    describe('enrich', () => {
+        const sel = (tableId, col) => ({ tableId, col });
+
+        test('case-sensitive (default): no join on mismatched case', () => {
+            const r = computeFromRecipe({
+                op: 'enrich',
+                leftId: 'tEmails', leftCol: 'Email',
+                rightId: 'tBlock', rightCol: 'Email',
+                selectedCols: [sel('tEmails', 'Email'), sel('tEmails', 'Name')],
+            }, localTables);
+            // No matches → right side fills with ''
+            expect(r.rows.every(r => r[1] !== '')).toBe(true); // Name (from left) always present
+        });
+
+        test('caseInsensitive: joins on normalised key', () => {
+            const enriched = {
+                id: 'tEnriched', ref: 'enriched', name: 'Enriched',
+                columns: ['Email', 'Category'],
+                rows: [
+                    ['CONTACT@GMAIL.COM', 'Personal'],
+                    ['support@acme.com',  'Support'],
+                ]
+            };
+            const r = computeFromRecipe({
+                op: 'enrich',
+                leftId: 'tEmails', leftCol: 'Email',
+                rightId: 'tEnriched', rightCol: 'Email',
+                selectedCols: [sel('tEmails', 'Name'), sel('tEnriched', 'Category')],
+                caseInsensitive: true,
+            }, [...localTables, enriched]);
+            const alice = r.rows.find(r => r[0] === 'Alice');
+            const bob   = r.rows.find(r => r[0] === 'Bob');
+            expect(alice[1]).toBe('Personal');
+            expect(bob[1]).toBe('Support');
+        });
+
+        test('caseInsensitive: unmatched left row still appears with empty right values', () => {
+            const enriched = {
+                id: 'tEnriched2', ref: 'enriched2', name: 'Enriched2',
+                columns: ['Email', 'Category'],
+                rows: [['CONTACT@GMAIL.COM', 'Personal']]
+            };
+            const r = computeFromRecipe({
+                op: 'enrich',
+                leftId: 'tEmails', leftCol: 'Email',
+                rightId: 'tEnriched2', rightCol: 'Email',
+                selectedCols: [sel('tEmails', 'Name'), sel('tEnriched2', 'Category')],
+                caseInsensitive: true,
+            }, [...localTables, enriched]);
+            const dave = r.rows.find(r => r[0] === 'Dave');
+            expect(dave).toBeDefined();
+            expect(dave[1]).toBe('');
+        });
+    });
+
+    // ── null handling ─────────────────────────────────────────────────────────
+
+    test('caseInsensitive: null keys do not match non-null values', () => {
+        const left  = { id: 'tL', ref: 'l', name: 'L', columns: ['K'], rows: [[null], ['a']] };
+        const right = { id: 'tR', ref: 'r', name: 'R', columns: ['K'], rows: [['A']] };
+        const r = computeFromRecipe({
+            op: 'filter',
+            leftId: 'tL', leftCol: 'K',
+            rightId: 'tR', rightCol: 'K',
+            caseInsensitive: true,
+        }, [left, right]);
+        expect(r.rows.map(r => r[0])).toEqual(['a']);
+    });
 });
 
 // ── split ─────────────────────────────────────────────────────────────────────
@@ -696,6 +928,383 @@ describe('computeFromRecipe — split', () => {
             const r = computeFromRecipe(defaultRecipe, [...tables, siblingPartner, siblingOtherGroup]);
             // Customer (001,003) + empty-type (004) are not Partners → all 3 in default
             expect(r.rows.map(r => r[0]).sort()).toEqual(['001', '003', '004']);
+        });
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group op
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('group op', () => {
+    const source = {
+        id: 'tSrc', name: 'Source', source: 'soql',
+        columnDefs: [
+            { id: 'cId',   name: 'AccountId' },
+            { id: 'cStage', name: 'Stage' },
+            { id: 'cAmt',  name: 'Amount' },
+        ],
+        columns: ['AccountId', 'Stage', 'Amount'],
+        rows: [
+            ['001', 'Open',       '100'],
+            ['001', 'Closed Won', '200'],
+            ['002', 'Open',       '300'],
+            ['002', 'Open',       '50' ],
+        ]
+    };
+    const tables = [source];
+
+    const recipe = {
+        op: 'group',
+        sourceId: 'tSrc',
+        groupColId: 'cId',
+        countColId: 'cCount',
+        aggregations: [
+            { colId: 'cStage', agg: 'concat_unique', outColId: 'oStage' },
+            { colId: 'cAmt',   agg: 'max',           outColId: 'oAmt'   },
+        ]
+    };
+
+    test('output has group col + count col + agg cols', () => {
+        const r = computeFromRecipe(recipe, tables);
+        expect(r.columns).toEqual(['AccountId', 'count_AccountId', 'Stage', 'Amount']);
+    });
+
+    test('correct number of groups', () => {
+        const r = computeFromRecipe(recipe, tables);
+        expect(r.rows.length).toBe(2);
+    });
+
+    test('count is correct', () => {
+        const r = computeFromRecipe(recipe, tables);
+        const row001 = r.rows.find(r => r[0] === '001');
+        expect(row001[1]).toBe('2');
+        const row002 = r.rows.find(r => r[0] === '002');
+        expect(row002[1]).toBe('2');
+    });
+
+    test('concat_unique joins unique values', () => {
+        const r = computeFromRecipe(recipe, tables);
+        const row001 = r.rows.find(r => r[0] === '001');
+        expect(row001[2]).toBe('Open;Closed Won');
+        const row002 = r.rows.find(r => r[0] === '002');
+        expect(row002[2]).toBe('Open'); // duplicate "Open" deduplicated
+    });
+
+    test('max (numeric) returns highest', () => {
+        const r = computeFromRecipe(recipe, tables);
+        const row001 = r.rows.find(r => r[0] === '001');
+        expect(row001[3]).toBe('200');
+        const row002 = r.rows.find(r => r[0] === '002');
+        expect(row002[3]).toBe('300');
+    });
+
+    test('first agg returns first encountered value', () => {
+        const r2 = computeFromRecipe({ ...recipe, aggregations: [
+            { colId: 'cStage', agg: 'first', outColId: 'oStage' }
+        ]}, tables);
+        const row001 = r2.rows.find(r => r[0] === '001');
+        expect(row001[2]).toBe('Open');
+    });
+
+    test('min (numeric) returns lowest', () => {
+        const r2 = computeFromRecipe({ ...recipe, aggregations: [
+            { colId: 'cAmt', agg: 'min', outColId: 'oAmt' }
+        ]}, tables);
+        const row002 = r2.rows.find(r => r[0] === '002');
+        expect(row002[2]).toBe('50');
+    });
+
+    test('concat_unique with custom separator', () => {
+        const r2 = computeFromRecipe({ ...recipe, aggregations: [
+            { colId: 'cStage', agg: 'concat_unique', separator: ' | ', outColId: 'oStage' }
+        ]}, tables);
+        const row001 = r2.rows.find(r => r[0] === '001');
+        expect(row001[2]).toBe('Open | Closed Won');
+    });
+
+    test('stable outColIds preserved in columnDefs', () => {
+        const r = computeFromRecipe(recipe, tables);
+        expect(r.columnDefs[0].id).toBe('cId');       // group col preserves source ID
+        expect(r.columnDefs[1].id).toBe('cCount');    // count col uses recipe.countColId
+        expect(r.columnDefs[2].id).toBe('oStage');    // agg cols use recipe.aggregations[i].outColId
+        expect(r.columnDefs[3].id).toBe('oAmt');
+    });
+
+    test('unknown sourceId returns empty', () => {
+        const r = computeFromRecipe({ ...recipe, sourceId: 'missing' }, tables);
+        expect(r.rows).toEqual([]);
+        expect(r.columns).toEqual([]);
+    });
+
+    test('groupColId stored as column name still works when source has stable IDs (stale recipe)', () => {
+        // Reproduces the scenario where a paste table (no columnDefs) had its recipe saved with
+        // groupColId = column_name, then was re-pasted and got stable IDs. The computation must
+        // still work via colIdx's name-based fallback.
+        const pasteWithStableIds = {
+            id: 'tPaste', name: 'Paste', source: 'paste',
+            columnDefs: [
+                { id: 'c_new_1', name: 'Groupe',  origin: 'Groupe' },
+                { id: 'c_new_2', name: 'Montant', origin: 'Montant' },
+            ],
+            columns: ['Groupe', 'Montant'],
+            rows: [['G1', '10'], ['G2', '20'], ['G1', '30']]
+        };
+        const staleRecipe = {
+            op: 'group',
+            sourceId: 'tPaste',
+            groupColId: 'Groupe',       // name, not stable ID — stale after paste got columnDefs
+            countColId: 'c_count',
+            aggregations: [
+                { colId: 'Montant', agg: 'sum', outColId: 'c_out' }  // also by name
+            ]
+        };
+        const r = computeFromRecipe(staleRecipe, [pasteWithStableIds]);
+        // Computation should still work via colIdx fallback (column name lookup)
+        expect(r.rows).toHaveLength(2);
+        const g1 = r.rows.find(row => row[0] === 'G1');
+        expect(g1).toBeDefined();
+        expect(Number(g1[2])).toBe(40); // sum of 10+30
+    });
+
+    // ── max / min on numbers ──────────────────────────────────────────────────
+
+    describe('max/min — numeric', () => {
+        function numSrc(vals) {
+            return [{
+                id: 'tN', name: 'N', source: 'soql',
+                columnDefs: [{ id: 'cG', name: 'G' }, { id: 'cV', name: 'V' }],
+                columns: ['G', 'V'],
+                rows: vals.map(([g, v]) => [g, v])
+            }];
+        }
+        function agg(op, vals) {
+            const tables = numSrc(vals);
+            const r = computeFromRecipe({
+                op: 'group', sourceId: 'tN', groupColId: 'cG', countColId: 'cc',
+                aggregations: [{ colId: 'cV', agg: op, outColId: 'ov' }]
+            }, tables);
+            return r.rows.find(r => r[0] === 'A')?.[2];
+        }
+
+        test('max integer strings', () => expect(agg('max', [['A','3'],['A','10'],['A','2']])).toBe('10'));
+        test('min integer strings', () => expect(agg('min', [['A','3'],['A','10'],['A','2']])).toBe('2'));
+        test('max with decimals', () => expect(agg('max', [['A','1.5'],['A','2.3'],['A','0.9']])).toBe('2.3'));
+        test('min with decimals', () => expect(agg('min', [['A','1.5'],['A','2.3'],['A','0.9']])).toBe('0.9'));
+        test('max with negatives', () => expect(agg('max', [['A','-5'],['A','0'],['A','-1']])).toBe('0'));
+        test('min with negatives', () => expect(agg('min', [['A','-5'],['A','0'],['A','-1']])).toBe('-5'));
+        test('single value returns itself', () => expect(agg('max', [['A','42']])).toBe('42'));
+        test('empty values ignored in max', () => expect(agg('max', [['A',''],['A','5'],['A','']])).toBe('5'));
+        test('empty values ignored in min', () => expect(agg('min', [['A',''],['A','5'],['A','']])).toBe('5'));
+        test('all empty returns empty string', () => expect(agg('max', [['A',''],['A','']])).toBe(''));
+    });
+
+    // ── max / min on strings (alphabetic) ────────────────────────────────────
+
+    describe('max/min — alphabetic (fallback when not all numeric)', () => {
+        function strSrc(vals) {
+            return [{
+                id: 'tS', name: 'S', source: 'soql',
+                columnDefs: [{ id: 'cG', name: 'G' }, { id: 'cV', name: 'V' }],
+                columns: ['G', 'V'],
+                rows: vals.map(([g, v]) => [g, v])
+            }];
+        }
+        function agg(op, vals) {
+            const tables = strSrc(vals);
+            const r = computeFromRecipe({
+                op: 'group', sourceId: 'tS', groupColId: 'cG', countColId: 'cc',
+                aggregations: [{ colId: 'cV', agg: op, outColId: 'ov' }]
+            }, tables);
+            return r.rows.find(r => r[0] === 'A')?.[2];
+        }
+
+        test('max alphabetic', () => expect(agg('max', [['A','banana'],['A','apple'],['A','cherry']])).toBe('cherry'));
+        test('min alphabetic', () => expect(agg('min', [['A','banana'],['A','apple'],['A','cherry']])).toBe('apple'));
+        test('mixed numeric and text falls back to alphabetic', () => {
+            // "10" < "9" alphabetically
+            expect(agg('max', [['A','9'],['A','10'],['A','abc']])).toBe('abc');
+            expect(agg('min', [['A','9'],['A','10'],['A','abc']])).toBe('10');
+        });
+        test('case sensitive: uppercase before lowercase', () => {
+            expect(agg('min', [['A','b'],['A','A']])).toBe('A');
+        });
+    });
+
+    // ── max / min on dates ────────────────────────────────────────────────────
+
+    describe('max/min — dates', () => {
+        function dateSrc(vals) {
+            return [{
+                id: 'tD', name: 'D', source: 'soql',
+                columnDefs: [{ id: 'cG', name: 'G' }, { id: 'cD', name: 'Date' }],
+                columns: ['G', 'Date'],
+                rows: vals.map(([g, d]) => [g, d])
+            }];
+        }
+        function agg(op, vals) {
+            const tables = dateSrc(vals);
+            const r = computeFromRecipe({
+                op: 'group', sourceId: 'tD', groupColId: 'cG', countColId: 'cc',
+                aggregations: [{ colId: 'cD', agg: op, outColId: 'od' }]
+            }, tables);
+            return r.rows.find(r => r[0] === 'A')?.[2];
+        }
+
+        test('max ISO dates', () => expect(agg('max', [['A','2024-01-15'],['A','2023-12-31'],['A','2024-06-01']])).toBe('2024-06-01'));
+        test('min ISO dates', () => expect(agg('min', [['A','2024-01-15'],['A','2023-12-31'],['A','2024-06-01']])).toBe('2023-12-31'));
+        test('max Salesforce datetimes', () => {
+            const v = agg('max', [['A','2024-01-15T10:00:00.000Z'],['A','2024-01-15T09:00:00.000Z']]);
+            expect(v).toBe('2024-01-15T10:00:00.000Z');
+        });
+        test('min Salesforce datetimes', () => {
+            const v = agg('min', [['A','2024-01-15T10:00:00.000Z'],['A','2024-01-15T09:00:00.000Z']]);
+            expect(v).toBe('2024-01-15T09:00:00.000Z');
+        });
+        test('single date returns itself', () => expect(agg('max', [['A','2024-03-10']])).toBe('2024-03-10'));
+    });
+
+    // ── sum / avg ─────────────────────────────────────────────────────────────
+
+    describe('sum/avg — numeric aggregation', () => {
+        function numSrc(vals) {
+            return [{
+                id: 'tN2', name: 'N2', source: 'soql',
+                columnDefs: [{ id: 'cG', name: 'G' }, { id: 'cV', name: 'V' }],
+                columns: ['G', 'V'],
+                rows: vals.map(([g, v]) => [g, v])
+            }];
+        }
+        function agg(op, vals) {
+            const tables = numSrc(vals);
+            const r = computeFromRecipe({
+                op: 'group', sourceId: 'tN2', groupColId: 'cG', countColId: 'cc',
+                aggregations: [{ colId: 'cV', agg: op, outColId: 'ov' }]
+            }, tables);
+            return r.rows.find(r => r[0] === 'A')?.[2];
+        }
+
+        test('sum of integers', () => expect(agg('sum', [['A','100'],['A','200'],['A','300']])).toBe(600));
+        test('sum of decimals', () => expect(agg('sum', [['A','1.5'],['A','2.5']])).toBe(4));
+        test('sum with negatives', () => expect(agg('sum', [['A','10'],['A','-3']])).toBe(7));
+        test('sum single value', () => expect(agg('sum', [['A','42']])).toBe(42));
+
+        test('avg of integers', () => expect(agg('avg', [['A','100'],['A','200'],['A','300']])).toBe(200));
+        test('avg of decimals', () => expect(agg('avg', [['A','1'],['A','2'],['A','3']])).toBe(2));
+        test('avg single value', () => expect(agg('avg', [['A','42']])).toBe(42));
+
+        test('empty values ignored — not treated as zero', () => {
+            // sum of [100, '', 200] should be 300, not 300 (but avg should be 150, not 100)
+            expect(agg('sum', [['A','100'],['A',''],['A','200']])).toBe(300);
+            expect(agg('avg', [['A','100'],['A',''],['A','200']])).toBe(150);
+        });
+        test('null/undefined values ignored', () => {
+            expect(agg('sum', [['A','100'],['A',null],['A','50']])).toBe(150);
+            expect(agg('avg', [['A','100'],['A',null],['A','50']])).toBe(75);
+        });
+        test('all empty returns empty string', () => {
+            expect(agg('sum', [['A',''],['A','']])).toBe('');
+            expect(agg('avg', [['A',''],['A','']])).toBe('');
+        });
+        test('non-numeric values ignored', () => {
+            // "N/A" and "—" are skipped; only numeric strings count
+            expect(agg('sum', [['A','100'],['A','N/A'],['A','200']])).toBe(300);
+            expect(agg('avg', [['A','100'],['A','N/A'],['A','200']])).toBe(150);
+        });
+        test('all non-numeric returns empty string', () => {
+            expect(agg('sum', [['A','foo'],['A','bar']])).toBe('');
+            expect(agg('avg', [['A','foo'],['A','bar']])).toBe('');
+        });
+        test('no floating point artifacts (0.1 + 0.2)', () => {
+            expect(agg('sum', [['A','0.1'],['A','0.2']])).toBe(0.3);
+        });
+        test('avg does not produce excess decimal noise', () => {
+            expect(agg('avg', [['A','1'],['A','2'],['A','3'],['A','4'],['A','5']])).toBe(3);
+        });
+
+        // ── treatBlankAsZero ──────────────────────────────────────────────────
+
+        function aggZero(op, vals) {
+            const tables = numSrc(vals);
+            const r = computeFromRecipe({
+                op: 'group', sourceId: 'tN2', groupColId: 'cG', countColId: 'cc',
+                aggregations: [{ colId: 'cV', agg: op, outColId: 'ov', treatBlankAsZero: true }]
+            }, tables);
+            return r.rows.find(r => r[0] === 'A')?.[2];
+        }
+
+        test('sum treatBlankAsZero: empty counted as 0', () => {
+            expect(aggZero('sum', [['A','100'],['A',''],['A','200']])).toBe(300);
+        });
+        test('avg treatBlankAsZero: empty counted as 0 in denominator', () => {
+            // avg([100, 0, 200]) = 300/3 = 100, not 300/2 = 150
+            expect(aggZero('avg', [['A','100'],['A',''],['A','200']])).toBe(100);
+        });
+        test('sum treatBlankAsZero: non-numeric counted as 0', () => {
+            expect(aggZero('sum', [['A','100'],['A','N/A'],['A','200']])).toBe(300);
+        });
+        test('avg treatBlankAsZero: non-numeric counted as 0 in denominator', () => {
+            expect(aggZero('avg', [['A','100'],['A','N/A'],['A','200']])).toBe(100);
+        });
+        test('sum treatBlankAsZero: all empty = 0', () => {
+            expect(aggZero('sum', [['A',''],['A','']])).toBe(0);
+        });
+        test('avg treatBlankAsZero: all empty = 0', () => {
+            expect(aggZero('avg', [['A',''],['A','']])).toBe(0);
+        });
+    });
+
+    // ── concat_unique edge cases ──────────────────────────────────────────────
+
+    describe('concat_unique edge cases', () => {
+        function concatAgg(rows, separator) {
+            const tables = [{
+                id: 'tC', name: 'C', source: 'soql',
+                columnDefs: [{ id: 'cG', name: 'G' }, { id: 'cV', name: 'V' }],
+                columns: ['G', 'V'],
+                rows
+            }];
+            const r = computeFromRecipe({
+                op: 'group', sourceId: 'tC', groupColId: 'cG', countColId: 'cc',
+                aggregations: [{ colId: 'cV', agg: 'concat_unique', outColId: 'ov', ...(separator !== undefined ? { separator } : {}) }]
+            }, tables);
+            return r.rows.find(r => r[0] === 'A')?.[2];
+        }
+
+        test('all identical values → single value', () => expect(concatAgg([['A','x'],['A','x'],['A','x']])).toBe('x'));
+        test('empty strings excluded from concat', () => expect(concatAgg([['A',''],['A','foo'],['A','']])).toBe('foo'));
+        test('all empty → empty string', () => expect(concatAgg([['A',''],['A','']])).toBe(''));
+        test('default separator is ;', () => expect(concatAgg([['A','a'],['A','b']])).toBe('a;b'));
+        test('custom separator applied', () => expect(concatAgg([['A','a'],['A','b']], ' / ')).toBe('a / b'));
+        test('order preserved (first occurrence wins for uniqueness)', () => {
+            expect(concatAgg([['A','c'],['A','a'],['A','b'],['A','a']])).toBe('c;a;b');
+        });
+    });
+
+    // ── concat_all edge cases ─────────────────────────────────────────────────
+
+    describe('concat_all edge cases', () => {
+        function concatAllAgg(rows, separator) {
+            const tables = [{
+                id: 'tCA', name: 'CA', source: 'soql',
+                columnDefs: [{ id: 'cG', name: 'G' }, { id: 'cV', name: 'V' }],
+                columns: ['G', 'V'],
+                rows
+            }];
+            const r = computeFromRecipe({
+                op: 'group', sourceId: 'tCA', groupColId: 'cG', countColId: 'cc',
+                aggregations: [{ colId: 'cV', agg: 'concat_all', outColId: 'ov', ...(separator !== undefined ? { separator } : {}) }]
+            }, tables);
+            return r.rows.find(r => r[0] === 'A')?.[2];
+        }
+
+        test('keeps duplicates unlike concat_unique', () => expect(concatAllAgg([['A','x'],['A','x'],['A','x']])).toBe('x;x;x'));
+        test('empty strings excluded from concat', () => expect(concatAllAgg([['A',''],['A','foo'],['A','']])).toBe('foo'));
+        test('all empty → empty string', () => expect(concatAllAgg([['A',''],['A','']])).toBe(''));
+        test('default separator is ;', () => expect(concatAllAgg([['A','a'],['A','b'],['A','a']])).toBe('a;b;a'));
+        test('custom separator applied', () => expect(concatAllAgg([['A','a'],['A','b']], ' | ')).toBe('a | b'));
+        test('insertion order preserved', () => {
+            expect(concatAllAgg([['A','c'],['A','a'],['A','b'],['A','a']])).toBe('c;a;b;a');
         });
     });
 });

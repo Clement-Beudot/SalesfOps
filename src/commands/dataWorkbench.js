@@ -1,9 +1,10 @@
-const { spawn } = require('child_process');
 const fs = require('fs');
 const { createDarkWindow } = require('../windows/window-utils');
 const { BrowserWindow, dialog } = require('electron');
 const path = require('path');
-const { resolveEnv, shellExec } = require('../utils/shell-exec');
+const { shellExec } = require('../utils/shell-exec');
+const { runSoqlQuery } = require('../utils/salesforce-query');
+const { runDml, runDmlBatch } = require('../utils/salesforce-rest');
 
 class DataWorkbenchCommand {
     constructor(app, settingsManager) {
@@ -52,82 +53,6 @@ class DataWorkbenchCommand {
 
     // Deep-flatten any Salesforce value into leaf columns at a given path.
     // Objects are expanded (attributes skipped), arrays indexed 0, 1, 2…
-    flattenValue(val, col, result) {
-        if (val === null || val === undefined) {
-            result[col] = '';
-        } else if (Array.isArray(val)) {
-            val.forEach((item, i) => this.flattenValue(item, `${col}_${i}`, result));
-        } else if (typeof val === 'object') {
-            for (const [k, v] of Object.entries(val)) {
-                if (k === 'attributes') continue;
-                this.flattenValue(v, `${col}_${k}`, result);
-            }
-        } else {
-            result[col] = String(val);
-        }
-    }
-
-    flattenRecord(record) {
-        const result = {};
-        for (const [key, val] of Object.entries(record)) {
-            if (key === 'attributes') continue;
-            this.flattenValue(val, key, result);
-        }
-        return result;
-    }
-
-    async runSoqlQuery(query, orgIdentifier) {
-        return new Promise(async (resolve) => {
-            const args = ['data', 'query', '--query', query, '--json'];
-            if (orgIdentifier) {
-                args.push('-o', orgIdentifier);
-            }
-
-            const env = await resolveEnv();
-
-            let stdout = '';
-            let stderr = '';
-
-            const child = spawn('sf', args, { env });
-
-            child.stdout.on('data', (data) => { stdout += data.toString(); });
-            child.stderr.on('data', (data) => { stderr += data.toString(); });
-
-            child.on('close', () => {
-                try {
-                    const data = JSON.parse(stdout);
-                    if (data.status !== 0) {
-                        resolve({ error: data.message || data.name || 'Query failed.' });
-                        return;
-                    }
-                    const records = data.result?.records || [];
-                    if (records.length === 0) {
-                        resolve({ columns: [], rows: [], totalSize: 0 });
-                        return;
-                    }
-                    // Scan all records to get the widest column set, then drop bare parent
-                    // placeholders that were superseded by sub-columns in other records.
-                    const allCols = [...new Set(records.flatMap(r => Object.keys(this.flattenRecord(r))))];
-                    const columns = allCols.filter(c => !allCols.some(o => o !== c && o.startsWith(c + '_')));
-                    const rows = records.map(r => {
-                        const flat = this.flattenRecord(r);
-                        return columns.map(c => flat[c] ?? '');
-                    });
-                    resolve({ columns, rows, totalSize: data.result?.totalSize || records.length });
-                } catch {
-                    resolve({ error: stderr.trim() || 'Failed to parse query result. Is Salesforce CLI installed?' });
-                }
-            });
-
-            child.on('error', (err) => {
-                if (err.code === 'ENOENT') {
-                    resolve({ error: 'Salesforce CLI (sf) not found. Please install it first.' });
-                } else {
-                    resolve({ error: err.message });
-                }
-            });
-        });
-    }
 
     fetchOrgs() {
         return new Promise((resolve) => {
@@ -157,8 +82,14 @@ class DataWorkbenchCommand {
     }
 
     setupIpc(ipcMain) {
-        ipcMain.handle('data-workbench-run-soql', async (event, { query, orgIdentifier }) => {
-            return await this.runSoqlQuery(query, orgIdentifier);
+        ipcMain.handle('check-sf-cli', () => new Promise(resolve => {
+            shellExec('sf --version', (error) => {
+                resolve({ available: !error });
+            });
+        }));
+
+        ipcMain.handle('data-workbench-run-soql', async (_event, { query, orgIdentifier }) => {
+            return await runSoqlQuery(query, orgIdentifier);
         });
 
         ipcMain.handle('data-workbench-get-orgs', async () => {
@@ -174,16 +105,16 @@ class DataWorkbenchCommand {
             return result;
         });
 
-        ipcMain.handle('data-workbench-save-model', async (_event, modelData) => {
+        ipcMain.handle('data-workbench-save-model', async (_event, { data, defaultPath }) => {
             const result = await dialog.showSaveDialog(this.window, {
                 title: 'Save Workbench Model',
-                defaultPath: 'workbench-model.json',
+                defaultPath: defaultPath || 'workbench-model.json',
                 filters: [{ name: 'JSON', extensions: ['json'] }]
             });
             if (result.canceled || !result.filePath) return { canceled: true };
             try {
-                fs.writeFileSync(result.filePath, JSON.stringify(modelData, null, 2), 'utf-8');
-                return { success: true };
+                fs.writeFileSync(result.filePath, JSON.stringify(data, null, 2), 'utf-8');
+                return { success: true, filePath: result.filePath };
             } catch (err) {
                 return { error: err.message };
             }
@@ -198,7 +129,7 @@ class DataWorkbenchCommand {
             if (result.canceled || !result.filePaths.length) return { canceled: true };
             try {
                 const content = fs.readFileSync(result.filePaths[0], 'utf-8');
-                return { success: true, data: JSON.parse(content) };
+                return { success: true, data: JSON.parse(content), filePath: result.filePaths[0] };
             } catch (err) {
                 return { error: err.message };
             }
@@ -216,6 +147,30 @@ class DataWorkbenchCommand {
                 return { success: true };
             } catch (err) {
                 return { error: err.message };
+            }
+        });
+
+        ipcMain.handle('data-workbench-dml', async (event, params) => {
+            try {
+                const result = await runDml({
+                    ...params,
+                    onBatchDone: ({ batchIndex, total, results }) => {
+                        if (!event.sender.isDestroyed()) {
+                            event.sender.send('data-workbench-dml-progress', { batchIndex, total, results });
+                        }
+                    }
+                });
+                return { success: true, ...result };
+            } catch (err) {
+                return { success: false, error: err.message };
+            }
+        });
+
+        ipcMain.handle('data-workbench-dml-batch', async (_event, params) => {
+            try {
+                return await runDmlBatch(params);
+            } catch (err) {
+                return { success: false, error: err.message };
             }
         });
 

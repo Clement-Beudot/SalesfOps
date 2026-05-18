@@ -46,7 +46,6 @@
             if (!input) return;
 
             try {
-                const parsedData = JSON.parse(input);
                 const paths = await window.electronAPI.extractPaths(input);
 
                 if (paths && paths.error) {
@@ -62,7 +61,7 @@
                     showError('Invalid response format');
                 }
             } catch (error) {
-                showError('Invalid JSON format: ' + error.message);
+                showError(error.message || 'Invalid format');
             }
         }
 

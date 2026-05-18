@@ -1,6 +1,6 @@
 {
   "name": "SalesfOps",
-  "version": "0.3.0",
+  "version": "0.3.2",
   "description": "A collection of productivity micro-tools for operations teams, with a focus on Salesforce workflows",
   "keywords": [
     "salesforce",
@@ -33,8 +33,8 @@
     "testMatch": ["**/tests/**/*.test.js"]
   },
   "devDependencies": {
-    "electron": "^26.6.10",
-    "electron-builder": "^25.1.8",
+    "electron": "^41.3.0",
+    "electron-builder": "^26.8.1",
     "jest": "^30.3.0"
   },
   "build": {
@@ -56,8 +56,10 @@
       "settings.html",
       "assets/**/*",
       "src/**/*",
+      "docs/*",
       "node_modules/**/*"
     ],
+    "afterSign": "scripts/adhoc-sign.js",
     "mac": {
       "target": [
         "dmg",
@@ -75,8 +77,8 @@
     }
   },
   "dependencies": {
-    "csv-parse": "^5.6.0",
-    "csv-stringify": "^6.5.2",
+    "csv-parse": "^6.2.1",
+    "csv-stringify": "^6.7.0",
     "save-dev": "^0.0.1-security"
   },
   "homepage": "https://github.com/Clement-Beudot/SalesfOps#readme"

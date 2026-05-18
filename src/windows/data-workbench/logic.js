@@ -153,15 +153,22 @@
 
             const filteredRows = applyRowFilter(src.rows, src.columns, recipe.rowFilter, srcDefs);
 
-            // keptCols: v2 = IDs, v1 = names
+            // keptCols: v2 = IDs, v1 = names. Fall back to name/origin match for
+            // recipes saved before the source table had stable column IDs.
+            const findDef = srcDefs
+                ? ref => srcDefs.find(d => d.id === ref)
+                      || srcDefs.find(d => d.name === ref || d.origin === ref)
+                : () => null;
+
             const cols = (recipe.keptCols || []).filter(ref =>
-                srcDefs ? srcDefs.some(d => d.id === ref) : src.columns.includes(ref)
+                srcDefs ? findDef(ref) != null : src.columns.includes(ref)
             );
 
-            const keptDefs = cols.map(ref =>
-                srcDefs ? { ...srcDefs.find(d => d.id === ref) }
-                        : { id: ref, name: ref }
-            );
+            const keptDefs = cols.map(ref => {
+                if (!srcDefs) return { id: ref, name: ref };
+                const d = findDef(ref);
+                return d ? { ...d } : { id: ref, name: ref };
+            });
             const computedDefs = (recipe.computedCols || []).map(c => ({ id: c.id || genColId(), name: c.name }));
             const resultColDefs = [...keptDefs, ...computedDefs];
 
@@ -261,6 +268,88 @@
             return { columnDefs: resultColDefs, columns: [...src.columns], rows: filteredRows };
         }
 
+        if (recipe.op === 'group') {
+            const src = tables.find(t => t.id === recipe.sourceId);
+            if (!src) return empty;
+            const srcDefs = src.columnDefs || null;
+
+            const gIdx = colIdx(recipe.groupColId, src.columns, srcDefs);
+            if (gIdx < 0) return empty;
+
+            const groupDef = srcDefs ? srcDefs.find(d => d.id === recipe.groupColId) : null;
+            const groupName = groupDef ? groupDef.name : (src.columns[gIdx] || 'group');
+
+            // Group rows preserving insertion order
+            const groups = new Map();
+            src.rows.forEach(row => {
+                const key = String(row[gIdx] ?? '');
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key).push(row);
+            });
+
+            function doAgg(vals, agg, separator, treatBlankAsZero) {
+                if (vals.length === 0) return '';
+                if (agg === 'first') return vals[0] ?? '';
+                if (agg === 'concat_unique' || agg === 'concat_all') {
+                    const sep = separator !== undefined && separator !== '' ? separator : ';';
+                    const filtered = vals.filter(v => v !== '');
+                    const items = agg === 'concat_unique' ? [...new Set(filtered)] : filtered;
+                    return items.join(sep);
+                }
+                if (agg === 'sum' || agg === 'avg') {
+                    const isNum = v => v !== '' && v !== null && v !== undefined && isFinite(Number(v));
+                    if (treatBlankAsZero) {
+                        const nums = vals.map(v => isNum(v) ? Number(v) : 0);
+                        const total = nums.reduce((a, b) => a + b, 0);
+                        return parseFloat((agg === 'sum' ? total : total / nums.length).toPrecision(12));
+                    }
+                    const nums = vals.filter(isNum).map(Number);
+                    if (nums.length === 0) return '';
+                    const total = nums.reduce((a, b) => a + b, 0);
+                    return parseFloat((agg === 'sum' ? total : total / nums.length).toPrecision(12));
+                }
+                const nonEmpty = vals.filter(v => v !== '');
+                if (nonEmpty.length === 0) return '';
+                // Try numeric — use Number() which rejects partial matches like "2024-01-15"
+                const isNumStr = s => s.trim() !== '' && isFinite(Number(s));
+                if (nonEmpty.every(isNumStr)) {
+                    const nums = nonEmpty.map(Number);
+                    const target = agg === 'max' ? Math.max(...nums) : Math.min(...nums);
+                    return nonEmpty.find(v => Number(v) === target) ?? String(target);
+                }
+                // Try date
+                const dates = nonEmpty.map(v => new Date(v));
+                if (dates.every(d => !isNaN(d))) {
+                    const ms = dates.map(d => d.getTime());
+                    const target = agg === 'max' ? Math.max(...ms) : Math.min(...ms);
+                    return nonEmpty[ms.indexOf(target)] ?? '';
+                }
+                // Alphabetic fallback
+                const sorted = [...nonEmpty].sort();
+                return agg === 'max' ? sorted[sorted.length - 1] : sorted[0];
+            }
+
+            const groupColDef = groupDef ? { ...groupDef } : { id: recipe.groupColId, name: groupName };
+            const countColDef = { id: recipe.countColId || genColId(), name: `count_${groupName}` };
+            const aggColDefs  = (recipe.aggregations || []).map(a => {
+                const sd = srcDefs ? srcDefs.find(d => d.id === a.colId) : null;
+                return { id: a.outColId || genColId(), name: sd ? sd.name : (a.colId || '') };
+            });
+            const resultColDefs = [groupColDef, countColDef, ...aggColDefs];
+
+            const resultRows = [];
+            groups.forEach((rows, key) => {
+                const aggVals = (recipe.aggregations || []).map(a => {
+                    const ai = colIdx(a.colId, src.columns, srcDefs);
+                    const vals = rows.map(r => ai >= 0 ? String(r[ai] ?? '') : '');
+                    return doAgg(vals, a.agg, a.separator, a.treatBlankAsZero);
+                });
+                resultRows.push([key, String(rows.length), ...aggVals]);
+            });
+
+            return { columnDefs: resultColDefs, columns: resultColDefs.map(d => d.name), rows: resultRows };
+        }
+
         // enrich / missing / filter
         const L = tables.find(t => t.id === recipe.leftId);
         const R = tables.find(t => t.id === recipe.rightId);
@@ -272,18 +361,22 @@
         const li = colIdx(recipe.leftCol,  L.columns, lDefs);
         const ri = colIdx(recipe.rightCol, R.columns, rDefs);
 
+        const norm = recipe.caseInsensitive
+            ? (v => (v !== null && v !== undefined) ? String(v).toLowerCase() : v)
+            : (v => v);
+
         const idx = new Map();
         R.rows.forEach(row => {
-            const k = row[ri];
+            const k = norm(row[ri]);
             if (!idx.has(k)) idx.set(k, []);
             idx.get(k).push(row);
         });
 
         if (recipe.op === 'missing') {
-            return { columnDefs: lDefs ? lDefs.map(d => ({ ...d })) : L.columns.map(n => ({ id: n, name: n })), columns: [...L.columns], rows: L.rows.filter(r => !idx.has(r[li])) };
+            return { columnDefs: lDefs ? lDefs.map(d => ({ ...d })) : L.columns.map(n => ({ id: n, name: n })), columns: [...L.columns], rows: L.rows.filter(r => !idx.has(norm(r[li]))) };
         }
         if (recipe.op === 'filter') {
-            return { columnDefs: lDefs ? lDefs.map(d => ({ ...d })) : L.columns.map(n => ({ id: n, name: n })), columns: [...L.columns], rows: L.rows.filter(r => idx.has(r[li])) };
+            return { columnDefs: lDefs ? lDefs.map(d => ({ ...d })) : L.columns.map(n => ({ id: n, name: n })), columns: [...L.columns], rows: L.rows.filter(r => idx.has(norm(r[li]))) };
         }
 
         // enrich (left join)
@@ -292,8 +385,10 @@
             if (s.colId) {
                 // v2: find by ID in L or R
                 table = [L, R].find(t => (t.columnDefs || []).some(d => d.id === s.colId));
+                // Fallback for tables without columnDefs (paste/soql): colId is the column name
+                if (!table) table = [L, R].find(t => !t.columnDefs && t.columns.includes(s.colId));
                 const def = table ? (table.columnDefs || []).find(d => d.id === s.colId) : null;
-                colName = def?.name;
+                colName = def?.name ?? (table && !table.columnDefs ? s.colId : undefined);
                 colId   = s.colId;
             } else {
                 // v1: find by tableId + name
@@ -311,7 +406,7 @@
         }));
         const resultRows = [];
         L.rows.forEach(leftRow => {
-            (idx.get(leftRow[li]) || [null]).forEach(rightRow => {
+            (idx.get(norm(leftRow[li])) || [null]).forEach(rightRow => {
                 resultRows.push(selCols.map(c => {
                     const ci = c.table.columns.indexOf(c.colName);
                     const isLeft = c.table.id === recipe.leftId;
@@ -501,6 +596,7 @@
                 }
                 // Two-char operators
                 const two = src.slice(i, i + 2);
+                if (two === '==' || two === '!=') { toks.push({ t: 'OP', v: two === '==' ? '=' : '<>' }); i += 2; continue; }
                 if (['<>', '>=', '<='].includes(two)) { toks.push({ t: 'OP', v: two }); i += 2; continue; }
                 // Single-char
                 if ('+-*/&'.includes(src[i])) { toks.push({ t: 'OP', v: src[i++] }); continue; }
@@ -536,6 +632,25 @@
         }
         function int(v) { return Math.trunc(toNum(v)); }
 
+        // ── Date helpers ─────────────────────────────────────────────────────
+        function parseDate(v) {
+            const s = toStr(v).trim();
+            if (!s) return null;
+            // Native parse handles ISO 8601, RFC 2822, Salesforce datetimes, etc.
+            let d = new Date(s);
+            if (!isNaN(d)) return d;
+            // DD/MM/YYYY or DD-MM-YYYY (European format)
+            const eu = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+            if (eu) { d = new Date(Date.UTC(+eu[3], +eu[2] - 1, +eu[1])); if (!isNaN(d)) return d; }
+            return null;
+        }
+        function isoDate(d) {
+            if (!d || isNaN(d)) return '';
+            return d.getUTCFullYear() + '-' +
+                   String(d.getUTCMonth() + 1).padStart(2, '0') + '-' +
+                   String(d.getUTCDate()).padStart(2, '0');
+        }
+
         // ── Built-in functions ───────────────────────────────────────────────
         const FUNS = {
             // String
@@ -557,6 +672,16 @@
             PAD:        a => toStr(a[0]).padStart(int(a[1]), toStr(a[2] ?? ' ')),
             PADEND:     a => toStr(a[0]).padEnd(int(a[1]), toStr(a[2] ?? ' ')),
             CLEAN:      a => toStr(a[0]).replace(/[\x00-\x1F]/g, ''),
+            COUNT: a => {
+                const needle = toStr(a[1]);
+                if (!needle) return 0;
+                const cs = a[2] === undefined || truthy(a[2]);
+                const haystack = cs ? toStr(a[0]) : toStr(a[0]).toLowerCase();
+                const n = cs ? needle : needle.toLowerCase();
+                let count = 0, pos = 0;
+                while ((pos = haystack.indexOf(n, pos)) !== -1) { count++; pos += n.length; }
+                return count;
+            },
             // Math
             INT:        a => Math.trunc(toNum(a[0])),
             FLOAT:      a => toNum(a[0]),
@@ -587,6 +712,54 @@
             TEXT:       a => toStr(a[0]),
             VALUE:      a => { const n = parseFloat(toStr(a[0]).replace(/[^\d.-]/g, '')); return isNaN(n) ? '' : n; },
             FIXED:      a => toNum(a[0]).toFixed(Math.max(0, int(a[1] ?? 2))),
+            NUMBER:     a => { const n = parseFloat(toStr(a[0]).trim()); return isNaN(n) ? '' : n; },
+            AVERAGE:    a => { const nums = a.map(toNum); return nums.reduce((s, v) => s + v, 0) / nums.length; },
+            // Date — parse
+            DATEVALUE:      a => isoDate(parseDate(a[0])),
+            DATETIMEVALUE:  a => { const d = parseDate(a[0]); return d && !isNaN(d) ? d.toISOString() : ''; },
+            ISDATE:         a => parseDate(a[0]) !== null,
+            TODAY:          _a => isoDate(new Date()),
+            NOW:            _a => new Date().toISOString(),
+            // Date — extract
+            YEAR:       a => { const d = parseDate(a[0]); return d ? d.getUTCFullYear() : ''; },
+            MONTH:      a => { const d = parseDate(a[0]); return d ? d.getUTCMonth() + 1 : ''; },
+            DAY:        a => { const d = parseDate(a[0]); return d ? d.getUTCDate() : ''; },
+            HOUR:       a => { const d = parseDate(a[0]); return d ? d.getUTCHours() : ''; },
+            MINUTE:     a => { const d = parseDate(a[0]); return d ? d.getUTCMinutes() : ''; },
+            // Date — arithmetic
+            DATE_ADD: a => {
+                const d = parseDate(a[0]);
+                if (!d) return '';
+                const n = int(a[1]);
+                const unit = toStr(a[2] ?? 'day').toLowerCase();
+                const r = new Date(d);
+                if (unit.startsWith('y'))      r.setUTCFullYear(r.getUTCFullYear() + n);
+                else if (unit.startsWith('m')) r.setUTCMonth(r.getUTCMonth() + n);
+                else                           r.setUTCDate(r.getUTCDate() + n);
+                return isoDate(r);
+            },
+            DATE_DIFF: a => {
+                const d1 = parseDate(a[0]), d2 = parseDate(a[1]);
+                if (!d1 || !d2) return '';
+                const unit = toStr(a[2] ?? 'day').toLowerCase();
+                if (unit.startsWith('y')) return d1.getUTCFullYear() - d2.getUTCFullYear();
+                if (unit.startsWith('m')) return (d1.getUTCFullYear() - d2.getUTCFullYear()) * 12 + (d1.getUTCMonth() - d2.getUTCMonth());
+                return Math.round((d1 - d2) / 86400000);
+            },
+            // Date — format
+            DATE_FORMAT: a => {
+                const d = parseDate(a[0]);
+                if (!d) return '';
+                const p = n => String(n).padStart(2, '0');
+                return toStr(a[1])
+                    .replace('YYYY', d.getUTCFullYear())
+                    .replace('YY',   String(d.getUTCFullYear()).slice(-2))
+                    .replace('MM',   p(d.getUTCMonth() + 1))
+                    .replace('DD',   p(d.getUTCDate()))
+                    .replace('HH',   p(d.getUTCHours()))
+                    .replace('mm',   p(d.getUTCMinutes()))
+                    .replace('SS',   p(d.getUTCSeconds()));
+            },
         };
 
         // ── Recursive-descent parser ─────────────────────────────────────────
@@ -605,7 +778,7 @@
                 const right = parseConcat();
                 const ls = toStr(left), rs = toStr(right);
                 const ln = toNum(left), rn = toNum(right);
-                const numeric = !isNaN(parseFloat(ls)) && !isNaN(parseFloat(rs));
+                const numeric = [ls, rs].every(s => s.trim() !== '' && !isNaN(Number(s)));
                 switch (op.v) {
                     case '=':  return numeric ? ln === rn : ls === rs;
                     case '<>': return numeric ? ln !== rn : ls !== rs;
@@ -662,6 +835,8 @@
             if (tok.t === 'ID') {
                 consume();
                 const upper = tok.v.toUpperCase();
+                if (upper === 'TRUE')  return true;
+                if (upper === 'FALSE') return false;
                 if (peek().t === 'LP') {
                     consume(); // '('
                     const args = [];
@@ -741,7 +916,7 @@
      * Migrate a saved model from schema v1 (name-based) to v2 (ID-based).
      * Idempotent — returns data unchanged if version !== 1.
      */
-    function migrateModelV1toV2(data) {
+    function _migrateModelV1toV2_unused(data) {
         if (!data || data.version !== 1) return data;
 
         const colDefsByTableId = new Map();
@@ -936,6 +1111,10 @@
             if (recipe.isDefault) return false; // default branch references no explicit column
             return recipe.condition ? idSet.has(recipe.condition.col) : false;
         }
+        if (recipe.op === 'group') {
+            if (idSet.has(recipe.groupColId)) return true;
+            return (recipe.aggregations || []).some(a => idSet.has(a.colId));
+        }
         if (recipe.op === 'stack') {
             return (recipe.columnMapping || []).some(m => idSet.has(m.leftColId) || idSet.has(m.rightColId));
         }
@@ -946,15 +1125,51 @@
 
     // ── Color rule evaluation ─────────────────────────────────────────────────
 
-    function evalColorRule(tableEntry, rule) {
+    function evalColorRule(tableEntry, rule, allTables = []) {
+        if (tableEntry.source === 'dml') {
+            const src = allTables.find(t => t.id === tableEntry.dmlConfig?.sourceTableId);
+            const srcRows = src ? src.rows.length : 0;
+            const results = tableEntry.dmlResults;
+            if (rule.condition === 'has_records') return srcRows > 0;
+            if (rule.condition === 'no_records')  return srcRows === 0;
+            if (rule.condition === 'dml_done_ok')  return !!results && results.every(r => r.success);
+            if (rule.condition === 'dml_done_err') return !!results && results.some(r => !r.success);
+            if (rule.condition === 'dml_not_run')  return !results;
+            return false;
+        }
         if (rule.condition === 'has_records') return tableEntry.rows.length > 0;
         if (rule.condition === 'no_records')  return tableEntry.rows.length === 0;
         return false;
     }
 
+    // ── Column sort utilities ─────────────────────────────────────────────────
+
+    function detectColType(rows, colIdx) {
+        const vals = rows.map(r => r[colIdx]).filter(v => v !== '' && v !== null && v !== undefined);
+        if (vals.length === 0) return 'string';
+        if (vals.every(v => isFinite(Number(v)))) return 'number';
+        if (vals.map(v => new Date(v)).every(d => !isNaN(d))) return 'date';
+        return 'string';
+    }
+
+    function makeRowComparator(colIdx, dir, colType) {
+        return (a, b) => {
+            const va = a[colIdx], vb = b[colIdx];
+            const empty = v => v === '' || v === null || v === undefined;
+            if (empty(va) && empty(vb)) return 0;
+            if (empty(va)) return 1;
+            if (empty(vb)) return -1;
+            let cmp = 0;
+            if (colType === 'number')    cmp = Number(va) - Number(vb);
+            else if (colType === 'date') cmp = new Date(va) - new Date(vb);
+            else                        cmp = String(va).localeCompare(String(vb));
+            return dir === 'asc' ? cmp : -cmp;
+        };
+    }
+
     // ── Export ────────────────────────────────────────────────────────────────
 
-    const api = { evalCondition, evaluateLogicExpression, applyRowFilter, computeFromRecipe, evaluateFormula, tableRef, renameSoqlRefs, renameColumnInSoql, renameColumnInRecipe, parseTsv, parseCsv, genColId, formulaToIds, reconcileSourceColumns, migrateModelV1toV2, recipeReferencesId, computeColumnDiff, evalColorRule };
+    const api = { evalCondition, evaluateLogicExpression, applyRowFilter, computeFromRecipe, evaluateFormula, tableRef, renameSoqlRefs, renameColumnInSoql, renameColumnInRecipe, parseTsv, parseCsv, genColId, formulaToIds, reconcileSourceColumns, recipeReferencesId, computeColumnDiff, evalColorRule, detectColType, makeRowComparator };
 
     if (typeof module !== 'undefined' && module.exports) {
         // Node / Jest

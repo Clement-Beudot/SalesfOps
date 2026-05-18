@@ -40,7 +40,8 @@
         dragHandle.style.cursor = 'grab';
     });
 
-    let selectedColor = null;
+    let selectedColor       = null;
+    let selectedBorderStyle = 'solid';
 
     // ── Swatch selection ──
     swatchContainer.addEventListener('click', (e) => {
@@ -52,10 +53,37 @@
         updateAddBtn();
     });
 
+    // ── Border style selection ──
+    const borderStyleContainer = document.getElementById('color-rule-border-styles');
+    borderStyleContainer.addEventListener('click', (e) => {
+        const btn = e.target.closest('.border-style-btn');
+        if (!btn) return;
+        borderStyleContainer.querySelectorAll('.border-style-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        selectedBorderStyle = btn.dataset.style;
+    });
+
+    const condStandard = document.getElementById('color-rule-cond-standard');
+    const condDml      = document.getElementById('color-rule-cond-dml');
+
     function updateAddBtn() {
         addBtn.disabled = !selectedColor || !tableSelect.value;
     }
-    tableSelect.addEventListener('change', updateAddBtn);
+
+    function updateCondGroup() {
+        const t = tables.find(u => u.id === tableSelect.value);
+        const isDml = t?.source === 'dml';
+        condStandard.classList.toggle('hidden', isDml);
+        condDml.classList.toggle('hidden', !isDml);
+        // ensure a radio in the visible group is checked
+        const activeGroup = isDml ? condDml : condStandard;
+        if (!activeGroup.querySelector('input[name="color-rule-cond"]:checked')) {
+            activeGroup.querySelector('input[name="color-rule-cond"]').checked = true;
+        }
+        updateAddBtn();
+    }
+
+    tableSelect.addEventListener('change', updateCondGroup);
 
     // ── Open / close ──
     btnColorRules.addEventListener('click', () => {
@@ -96,7 +124,8 @@
             id: `cr_${Date.now()}`,
             tableId,
             condition,
-            color: selectedColor
+            color:       selectedColor,
+            borderStyle: selectedBorderStyle
         });
 
         // Reset form
@@ -124,13 +153,28 @@
             const row = document.createElement('div');
             row.className = 'color-rule-item';
 
-            const dot = document.createElement('span');
-            dot.className = 'color-rule-dot';
-            dot.style.background = rule.color;
+            const dot = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            dot.setAttribute('class', 'color-rule-dot');
+            dot.setAttribute('viewBox', '0 0 28 10');
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', '2'); line.setAttribute('y1', '5');
+            line.setAttribute('x2', '26'); line.setAttribute('y2', '5');
+            line.setAttribute('stroke', rule.color);
+            line.setAttribute('stroke-width', rule.borderStyle === 'dotted' ? '3' : '2.5');
+            if (rule.borderStyle === 'dashed') line.setAttribute('stroke-dasharray', '6 3');
+            if (rule.borderStyle === 'dotted') { line.setAttribute('stroke-dasharray', '2 3'); line.setAttribute('stroke-linecap', 'round'); }
+            dot.appendChild(line);
 
             const label = document.createElement('span');
             label.className = 'color-rule-item-label';
-            label.textContent = `${t ? t.name : '(deleted)'} — ${rule.condition === 'has_records' ? 'has records' : 'no records'}`;
+            const COND_LABELS = {
+                has_records: t?.source === 'dml' ? 'source has records' : 'has records',
+                no_records:  t?.source === 'dml' ? 'source is empty'    : 'no records',
+                dml_not_run:  'not yet run',
+                dml_done_ok:  'last run: all OK',
+                dml_done_err: 'last run: has errors',
+            };
+            label.textContent = `${t ? t.name : '(deleted)'} — ${COND_LABELS[rule.condition] || rule.condition}`;
 
             const del = document.createElement('button');
             del.className = 'color-rule-delete';

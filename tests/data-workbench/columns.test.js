@@ -1,6 +1,6 @@
 'use strict';
 
-const { reconcileSourceColumns, migrateModelV1toV2, recipeReferencesId, computeColumnDiff, genColId } = require('../../src/windows/data-workbench/logic');
+const { reconcileSourceColumns, recipeReferencesId, computeColumnDiff, genColId } = require('../../src/windows/data-workbench/logic');
 
 // ── reconcileSourceColumns ────────────────────────────────────────────────────
 
@@ -219,85 +219,6 @@ describe('recipeReferencesId', () => {
     test('returns false for empty idSet', () => {
         const r = { op: 'transform', sourceId: 't1', keptCols: ['col-x'], computedCols: [] };
         expect(recipeReferencesId(r, new Set())).toBe(false);
-    });
-});
-
-// ── migrateModelV1toV2 ────────────────────────────────────────────────────────
-
-describe('migrateModelV1toV2', () => {
-    test('returns non-v1 data unchanged', () => {
-        const data = { version: 2, tables: [] };
-        expect(migrateModelV1toV2(data)).toBe(data);
-    });
-
-    test('returns null unchanged', () => {
-        expect(migrateModelV1toV2(null)).toBeNull();
-    });
-
-    test('assigns columnDefs to source tables, using columnRenames', () => {
-        const data = {
-            version: 1,
-            tables: [{
-                id: 'src1', source: 'soql', name: 'Accounts',
-                columns: ['Salesforce_Id', 'Name'],
-                columnRenames: { Id: 'Salesforce_Id' },
-                soqlQuery: 'SELECT Id, Name FROM Account'
-            }]
-        };
-        const result = migrateModelV1toV2(data);
-        expect(result.version).toBe(2);
-        const src = result.tables[0];
-        expect(src.columnDefs).toHaveLength(2);
-        const idDef = src.columnDefs.find(d => d.name === 'Salesforce_Id');
-        expect(idDef).toBeDefined();
-        expect(idDef.origin).toBe('Id');
-        expect(idDef.id).toBeTruthy();
-    });
-
-    test('migrates a transform recipe keptCols from names to IDs', () => {
-        const data = {
-            version: 1,
-            tables: [
-                {
-                    id: 'src1', source: 'paste', name: 'Paste',
-                    columns: ['Id', 'Name', 'Email'],
-                    columnRenames: {}
-                },
-                {
-                    id: 'res1', source: 'result', name: 'Result',
-                    columns: ['Id', 'Email'],
-                    recipe: { op: 'transform', sourceId: 'src1', keptCols: ['Id', 'Email'], computedCols: [], rowFilter: null }
-                }
-            ]
-        };
-        const result = migrateModelV1toV2(data);
-        const srcDefs = result.tables.find(t => t.id === 'src1').columnDefs;
-        const idColId    = srcDefs.find(d => d.name === 'Id').id;
-        const emailColId = srcDefs.find(d => d.name === 'Email').id;
-        const res = result.tables.find(t => t.id === 'res1');
-        expect(res.recipe.keptCols).toEqual(expect.arrayContaining([idColId, emailColId]));
-        expect(res.recipe.keptCols).toHaveLength(2);
-    });
-
-    test('migrates a join recipe leftCol/rightCol to IDs', () => {
-        const data = {
-            version: 1,
-            tables: [
-                { id: 'tL', source: 'soql', name: 'L', columns: ['AccountId'], columnRenames: {} },
-                { id: 'tR', source: 'soql', name: 'R', columns: ['Id'], columnRenames: {} },
-                {
-                    id: 'res1', source: 'result', name: 'Res',
-                    columns: ['AccountId'],
-                    recipe: { op: 'enrich', leftId: 'tL', leftCol: 'AccountId', rightId: 'tR', rightCol: 'Id', selectedCols: [] }
-                }
-            ]
-        };
-        const result = migrateModelV1toV2(data);
-        const lDefs = result.tables.find(t => t.id === 'tL').columnDefs;
-        const rDefs = result.tables.find(t => t.id === 'tR').columnDefs;
-        const res = result.tables.find(t => t.id === 'res1');
-        expect(res.recipe.leftCol).toBe(lDefs.find(d => d.name === 'AccountId').id);
-        expect(res.recipe.rightCol).toBe(rDefs.find(d => d.name === 'Id').id);
     });
 });
 

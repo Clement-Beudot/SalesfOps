@@ -98,9 +98,13 @@ module.exports = {
         type: 'boolean',
         default: true
     },
+    sfdxVerified: {
+        type: 'boolean',
+        default: false
+    },
     sfdxOrgsActive: {
         type: 'boolean',
-        default: true
+        default: false
     },
     sfdxOrgsShortcut: {
         type: 'string',
@@ -114,8 +118,51 @@ module.exports = {
         type: 'string',
         default: ''
     },
+    savedQueries: {
+        type: 'array',
+        default: [],
+        items: {
+            type: 'object',
+            properties: {
+                id:        { type: 'string' },
+                name:      { type: 'string' },
+                query:     { type: 'string' },
+                createdAt: { type: 'string' }
+            },
+            required: ['id', 'name', 'query']
+        }
+    },
+    recentQueries: {
+        type: 'array',
+        default: [],
+        items: {
+            type: 'object',
+            properties: {
+                query:      { type: 'string' },
+                executedAt: { type: 'string' },
+                org:        { type: 'string' }
+            },
+            required: ['query']
+        }
+    },
     dataWorkbenchActive: {
         type: 'boolean',
         default: false
+    },
+    workbenchSoqlActive: {
+        type: 'boolean',
+        default: false
+    },
+    workbenchDmlActive: {
+        type: 'boolean',
+        default: false
+    },
+    soqlRunnerActive: {
+        type: 'boolean',
+        default: false
+    },
+    soqlRunnerShortcut: {
+        type: 'string',
+        default: ''
     }
 };

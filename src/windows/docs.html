@@ -36,6 +36,19 @@ function renderSection(container, mdText, extraClass = '') {
     return div;
 }
 
+// ── Hide a heading and all its content until the next heading of same/higher level
+function hideSection(id, stopTags = ['H1', 'H2', 'HR']) {
+    const heading = document.getElementById(id);
+    if (!heading) return;
+    const stops = new Set(stopTags);
+    heading.style.display = 'none';
+    let el = heading.nextElementSibling;
+    while (el && !stops.has(el.tagName)) {
+        el.style.display = 'none';
+        el = el.nextElementSibling;
+    }
+}
+
 // ── Build sidebar ──────────────────────────────────────────────────────────
 
 function buildSidebar() {
@@ -43,6 +56,7 @@ function buildSidebar() {
     const content = document.getElementById('content');
 
     document.querySelectorAll('#content h1, #content h2, #content h3').forEach(el => {
+        if (el.style.display === 'none') return;
         if (el.tagName === 'H1') {
             const grp = document.createElement('div');
             grp.className = 'toc-group';
@@ -155,12 +169,22 @@ function highlightBlock(els, q) {
     const content = document.getElementById('content');
     const api = window.electronAPI;
 
-    const [commandsMd, workbenchActive] = await Promise.all([
+    const [commandsMd, workbenchActive, settings] = await Promise.all([
         api.getCommandsMd(),
         api.getDataWorkbenchActive(),
+        api.getSettings(),
     ]);
 
+    const sfdxVerified       = settings.sfdxVerified       === true;
+    const soqlActive         = settings.workbenchSoqlActive === true;
+    const dmlActive          = settings.workbenchDmlActive  === true;
+
     renderSection(content, commandsMd);
+
+    if (!sfdxVerified) {
+        // H2 "## Salesforce CLI" → id "s-salesforce-cli", stop at next H1/H2/HR
+        hideSection('s-salesforce-cli');
+    }
 
     if (workbenchActive) {
         const [dwMd, formulaMd] = await Promise.all([
@@ -169,6 +193,15 @@ function highlightBlock(els, q) {
         ]);
         renderSection(content, dwMd);
         renderSection(content, formulaMd, 'formula');
+
+        if (!soqlActive) {
+            // H3 "### SOQL Query" → id "f-SOQL-Query", stop at next H1/H2/H3/HR
+            hideSection('f-SOQL-Query', 'H1', 'H2', 'H3', 'HR');
+        }
+        if (!dmlActive) {
+            // H2 "## DML Operations" → id "s-dml-operations"
+            hideSection('s-dml-operations');
+        }
     }
 
     buildSidebar();

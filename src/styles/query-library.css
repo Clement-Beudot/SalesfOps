@@ -1,0 +1,178 @@
+/* ── Query Library Panel ── */
+
+.ql-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.ql-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 0 8px;
+    flex-shrink: 0;
+}
+
+.ql-search-wrap {
+    flex: 1;
+    background: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 4px 10px;
+    display: flex;
+    align-items: center;
+}
+.ql-search-wrap:focus-within { border-color: #4f46e5; }
+
+.ql-search {
+    background: none;
+    border: none;
+    color: #e0e0e0;
+    font-size: 12px;
+    outline: none;
+    width: 100%;
+}
+.ql-search::placeholder { color: #3a3a3a; }
+
+.ql-close-btn {
+    background: none;
+    border: none;
+    color: #555;
+    font-size: 15px;
+    cursor: pointer;
+    padding: 0 2px;
+    flex-shrink: 0;
+    line-height: 1;
+}
+.ql-close-btn:hover { color: #e0e0e0; }
+
+.ql-body {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding-right: 2px;
+}
+
+.ql-section-title {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #4b5563;
+    margin-bottom: 8px;
+}
+
+.ql-group {
+    margin-bottom: 12px;
+}
+.ql-group-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: #6366f1;
+    margin-bottom: 6px;
+    padding-left: 2px;
+}
+
+.ql-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 6px;
+}
+
+.ql-tile {
+    position: relative;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 7px;
+    overflow: visible;
+    transition: border-color 0.15s;
+}
+.ql-tile:hover {
+    border-color: #4f46e5;
+    z-index: 10;
+}
+
+.ql-tile-body {
+    padding: 8px 10px;
+    cursor: pointer;
+    min-height: 52px;
+}
+
+.ql-tile-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #c7d2fe;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 3px;
+}
+
+.ql-tile-preview {
+    font-size: 10px;
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+    color: #4b5563;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
+/* Tooltip shown on hover */
+.ql-tile-tooltip {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    min-width: 260px;
+    max-width: 400px;
+    background: #0f0f1a;
+    border: 1px solid #4f46e5;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 11px;
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+    color: #a5b4fc;
+    white-space: pre-wrap;
+    word-break: break-all;
+    z-index: 200;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.7);
+    pointer-events: none;
+}
+.ql-tile:hover .ql-tile-tooltip { display: block; }
+
+.ql-tile-delete {
+    position: absolute;
+    top: 4px;
+    right: 5px;
+    background: none;
+    border: none;
+    color: #374151;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 1px 3px;
+    line-height: 1;
+    border-radius: 3px;
+    opacity: 0;
+    transition: opacity 0.1s;
+}
+.ql-tile:hover .ql-tile-delete { opacity: 1; }
+.ql-tile-delete:hover { background: #2d0a0a; color: #f87171; }
+
+.ql-sep {
+    border: none;
+    border-top: 1px solid #1e1e1e;
+    margin: 0;
+}
+
+.ql-empty {
+    text-align: center;
+    padding: 32px 16px;
+    color: #374151;
+    font-size: 12px;
+    font-style: italic;
+}

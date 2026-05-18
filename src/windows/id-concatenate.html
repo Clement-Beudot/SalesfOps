@@ -7,12 +7,41 @@
     <meta name="color-scheme" content="dark">
     <title>Concatenate Strings</title>
     <link rel="stylesheet" href="../styles/dark-input.css">
+    <style>
+        .modal-window { justify-content: flex-start; padding: 12px; }
+        .textarea-container { margin-bottom: 0; }
+        .dark-textarea { height: 100px; }
+
+        .result-row {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+            padding: 7px 10px;
+            background: #0f2e14;
+            border: 1px solid #166534;
+            border-radius: 6px;
+            font-size: 11px;
+        }
+        .result-row.visible { display: flex; }
+        .result-icon { color: #4ade80; font-size: 12px; flex-shrink: 0; }
+        .result-label { color: #4ade80; font-weight: 600; flex-shrink: 0; }
+        .result-preview {
+            color: #6b7280;
+            font-family: monospace;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1;
+            min-width: 0;
+        }
+    </style>
 </head>
 <body class="modal-window">
     <div class="textarea-container">
-        <textarea 
-            id="string-input" 
-            class="dark-textarea" 
+        <textarea
+            id="string-input"
+            class="dark-textarea"
             placeholder="Enter strings (separated by spaces or new lines)"
             autofocus
         ></textarea>
@@ -21,59 +50,53 @@
             <label for="newlines-only">Split by newlines only (ignore spaces)</label>
         </div>
         <div class="hint">
-            Press <span class="key">↵</span> to concatenate or <span class="key">Esc</span> to cancel
+            Press <span class="key">↵</span> to copy or <span class="key">Esc</span> to cancel
         </div>
-        <div id="success-message" class="success-message"></div>
-        <div id="result" class="result"></div>  
+        <div id="result-row" class="result-row">
+            <span class="result-icon">✓</span>
+            <span class="result-label">Copied</span>
+            <span id="result-preview" class="result-preview"></span>
+        </div>
     </div>
 
     <script>
-        const textarea = document.getElementById('string-input');
-        const newlinesOnlyCheckbox = document.getElementById('newlines-only');
-        const successMessage = document.getElementById('success-message');
-        const resultDiv = document.getElementById('result');
+        const textarea    = document.getElementById('string-input');
+        const checkbox    = document.getElementById('newlines-only');
+        const resultRow   = document.getElementById('result-row');
+        const resultPrev  = document.getElementById('result-preview');
 
-        document.addEventListener('DOMContentLoaded', () => {
-            textarea.focus();
-            textarea.select();
-        });
-        
+        const H_BASE   = 190;  // textarea + checkbox + hint + padding
+        const H_RESULT = 232;  // + result row
+
+        document.addEventListener('DOMContentLoaded', () => { textarea.focus(); });
+
         function concatenateStrings(input, newlinesOnly) {
-            const separator = newlinesOnly ? /\n+/ : /[\s\n]+/;
-            const strings = input
-                .split(separator)
-                .filter(s => s.trim())
-                .map(s => `'${s.trim()}'`);
-            return `(${strings.join(', ')})`;
+            const sep = newlinesOnly ? /\n+/ : /[\s\n]+/;
+            const parts = input.split(sep).filter(s => s.trim()).map(s => `'${s.trim()}'`);
+            return `(${parts.join(', ')})`;
         }
 
-        textarea.addEventListener('keyup', async (event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                const input = textarea.value.trim();
-                if (input) {
-                    const newlinesOnly = newlinesOnlyCheckbox.checked;
-                    const result = concatenateStrings(input, newlinesOnly);
-                    
-                    await window.electronAPI.copyToClipboard(result);
-                    
-                    resultDiv.textContent = result;
-                    resultDiv.classList.add('visible');
-                    
-                    successMessage.textContent = 'Copied to clipboard!';
-                    
-                    setTimeout(() => {
-                        window.electronAPI.closeStringConcatenator();
-                    }, 2000);
-                }
-            } else if (event.key === 'Escape') {
-                window.electronAPI.closeStringConcatenator();
-            }
+        textarea.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
         });
-        
-        textarea.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
+
+        textarea.addEventListener('keyup', async e => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                const input = textarea.value.trim();
+                if (!input) return;
+
+                const result = concatenateStrings(input, checkbox.checked);
+                await window.electronAPI.copyToClipboard(result);
+
+                resultPrev.textContent = result;
+                resultRow.classList.add('visible');
+                window.electronAPI.resizeWindow(H_RESULT);
+
+                setTimeout(() => window.electronAPI.closeStringConcatenator(), 1500);
+
+            } else if (e.key === 'Escape') {
+                window.electronAPI.closeStringConcatenator();
             }
         });
     </script>

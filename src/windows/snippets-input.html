@@ -7,83 +7,185 @@
     <meta name="color-scheme" content="dark">
     <title>Text Snippets</title>
     <link rel="stylesheet" href="../styles/dark-input.css">
+    <style>
+        /* Override .modal-window centering so content flows top-down */
+        .modal-window {
+            justify-content: flex-start;
+            padding: 16px 12px 0;
+        }
+
+        .input-container { margin-bottom: 0; }
+
+        .dark-input.open {
+            border-bottom-left-radius: 0;
+            border-bottom-right-radius: 0;
+        }
+
+        .suggestions {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            background: #2d2d2d;
+            border: 1px solid #3d3d3d;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            overflow: hidden;
+        }
+
+        .suggestion-item {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+            padding: 7px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #333;
+            font-size: 12px;
+        }
+
+        .suggestion-item:last-child { border-bottom: none; }
+
+        .suggestion-item:hover,
+        .suggestion-item.active { background: rgba(158, 15, 158, 0.18); }
+
+        .s-name {
+            font-weight: 600;
+            color: #fff;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .s-detail {
+            color: #666;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1;
+            min-width: 0;
+            font-size: 11px;
+        }
+
+        .hint {
+            position: static;
+            text-align: center;
+            padding: 8px 0 10px;
+            font-size: 11px;
+            color: #666;
+            opacity: 0.8;
+        }
+    </style>
 </head>
 <body class="modal-window">
     <div class="input-container">
-        <input type="text" 
+        <input type="text"
                id="snippet-input"
                class="dark-input"
-               placeholder="Enter snippet keyword..." 
-               list="snippet-options"
+               placeholder="Search snippets…"
                autocomplete="off"
+               spellcheck="false"
                autofocus>
-        <datalist id="snippet-options">
-        </datalist>
-        <div class="hint">
-            Press <span class="key">↵</span> to copy or <span class="key">Esc</span> to cancel
-        </div>
-        <div id="success-message" class="success-message"></div>
+        <ul class="suggestions" id="suggestions"></ul>
     </div>
+    <div class="hint">
+        Press <span class="key">↵</span> to copy or <span class="key">Esc</span> to cancel
+    </div>
+    <div id="success-message" class="success-message"></div>
 
     <script>
-        let snippets = [];
+        // Heights in px
+        const H_EMPTY = 95;   // input + hint + padding (no suggestions)
+        const ITEM_H  = 31;   // height per suggestion row
+        const MAX_VIS = 6;
 
-        const input = document.getElementById('snippet-input');
-        const datalist = document.getElementById('snippet-options');
-        const successMessage = document.getElementById('success-message');
+        let snippets  = [];
+        let matches   = [];
+        let activeIdx = -1;
 
-        document.addEventListener('DOMContentLoaded', async () => {
-            input.focus();
-            await loadSnippets();
-        });
+        const inp  = document.getElementById('snippet-input');
+        const list = document.getElementById('suggestions');
+        const msg  = document.getElementById('success-message');
 
-        async function loadSnippets() {
-            try {
-                snippets = await window.electronAPI.getSnippets();
-                updateDatalist();
-            } catch (error) {
-                console.error('Error loading snippets:', error);
+        (async () => {
+            try { snippets = await window.electronAPI.getSnippets() || []; }
+            catch { snippets = []; }
+            inp.focus();
+        })();
+
+        function render(term) {
+            list.innerHTML = '';
+            activeIdx = -1;
+
+            if (!term) {
+                matches = [];
+                inp.classList.remove('open');
+                window.electronAPI.resizeWindow(H_EMPTY);
+                return;
             }
-        }
 
-        function updateDatalist() {
-            datalist.innerHTML = '';
-            if (snippets && snippets.length > 0) {
-                snippets.forEach(snippet => {
-                    const option = document.createElement('option');
-                    option.value = snippet.keyword;
-                    datalist.appendChild(option);
-                });
+            const q = term.toLowerCase();
+            matches = snippets.filter(s => s.keyword.toLowerCase().includes(q));
+
+            if (!matches.length) {
+                inp.classList.remove('open');
+                window.electronAPI.resizeWindow(H_EMPTY);
+                return;
             }
+
+            inp.classList.add('open');
+            matches.forEach((s, i) => {
+                const li = document.createElement('li');
+                li.className = 'suggestion-item';
+
+                const name = document.createElement('span');
+                name.className   = 's-name';
+                name.textContent = s.keyword;
+
+                const detail = document.createElement('span');
+                detail.className   = 's-detail';
+                detail.textContent = s.replacement.replace(/\n/g, ' ').slice(0, 60);
+
+                li.appendChild(name);
+                li.appendChild(detail);
+                li.addEventListener('mousedown', e => { e.preventDefault(); confirm(i); });
+                list.appendChild(li);
+            });
+
+            const h = H_EMPTY + Math.min(matches.length, MAX_VIS) * ITEM_H;
+            window.electronAPI.resizeWindow(h);
+            setActive(0);
         }
 
-        function findMatchingSnippet(keyword) {
-            if (!keyword || !snippets || snippets.length === 0) return null;
-            return snippets.find(s => s.keyword.toLowerCase() === keyword.toLowerCase());
+        function setActive(idx) {
+            [...list.querySelectorAll('.suggestion-item')].forEach((el, i) =>
+                el.classList.toggle('active', i === idx));
+            activeIdx = idx;
         }
 
-        input.addEventListener('keyup', async (event) => {
-            if (event.key === 'Enter') {
-                const keyword = input.value.trim();
-                if (!keyword) return;
-                
-                await loadSnippets();
-                
-                const snippet = findMatchingSnippet(keyword);
-                if (snippet) {
-                    await window.electronAPI.copySnippetToClipboard(snippet.replacement);
-                    
-                    successMessage.textContent = 'Copied to clipboard!';
-                    successMessage.classList.add('visible');
-                    
-                    input.disabled = true;
-                    
-                    setTimeout(() => {
-                        window.electronAPI.closeSnippets();
-                    }, 200);
-                }
-            } else if (event.key === 'Escape') {
-                window.electronAPI.closeSnippets();
+        async function confirm(idx) {
+            const snippet = matches[idx ?? activeIdx];
+            if (!snippet) return;
+            await window.electronAPI.copySnippetToClipboard(snippet.replacement);
+            msg.textContent = 'Copied!';
+            msg.classList.add('visible');
+            inp.disabled = true;
+            setTimeout(() => window.electronAPI.closeSnippets(), 300);
+        }
+
+        inp.addEventListener('input', () => render(inp.value.trim()));
+
+        inp.addEventListener('keydown', e => {
+            if (e.key === 'Escape') { window.electronAPI.closeSnippets(); return; }
+            if (!matches.length) return;
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setActive((activeIdx + 1) % matches.length);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setActive(activeIdx <= 0 ? matches.length - 1 : activeIdx - 1);
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (activeIdx >= 0) confirm(activeIdx);
+                else if (matches.length === 1) confirm(0);
             }
         });
     </script>

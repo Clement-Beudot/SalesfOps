@@ -8,162 +8,204 @@
     <title>Remove Duplicates</title>
     <link rel="stylesheet" href="../styles/dark-input.css">
     <style>
-        .modal-window { justify-content: flex-start; padding: 16px; overflow-y: auto; }
-        .textarea-container { margin-bottom: 8px; }
-        .dark-textarea { height: 110px; width: 448px; }
-        .hint { position: static; margin-top: 6px; }
-        #results-section { width: 448px; margin-top: 12px; }
-        .duplicate-count { font-size: 13px; color: #ccc; margin-bottom: 10px; text-align: center; }
-        .duplicate-count.has-duplicates { color: #ff9944; }
-        .duplicate-count.no-duplicates { color: #4CAF50; }
+        .modal-window { justify-content: flex-start; padding: 12px; overflow-y: hidden; }
+        .textarea-container { margin-bottom: 0; }
+        .dark-textarea { height: 100px; }
+        #content-wrap { width: 100%; }
+
+        #results-section { margin-top: 10px; }
+
+        .count-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            margin-bottom: 8px;
+            padding: 0 2px;
+        }
+        .count-badge {
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+        .count-badge.no-dupes  { background: #0f2e14; color: #4ade80; border: 1px solid #166534; }
+        .count-badge.has-dupes { background: #2d1a00; color: #fb923c; border: 1px solid #7c3a00; }
+        .count-text { color: #666; }
     </style>
 </head>
 <body class="modal-window">
-    <div class="textarea-container">
-        <textarea
-            id="string-input"
-            class="dark-textarea"
-            placeholder="Enter strings (separated by spaces or new lines)"
-            autofocus
-        ></textarea>
-        <div class="hint">
-            Press <span class="key">↵</span> to analyse or <span class="key">Esc</span> to cancel
+    <div id="content-wrap">
+        <div class="textarea-container">
+            <textarea
+                id="string-input"
+                class="dark-textarea"
+                placeholder="Enter strings (separated by spaces or new lines)"
+                autofocus
+            ></textarea>
+            <div class="checkbox-container">
+                <input type="checkbox" id="newlines-only" name="newlines-only">
+                <label for="newlines-only">Split by newlines only (ignore spaces)</label>
+            </div>
+            <div class="checkbox-container" style="margin-top:2px">
+                <input type="checkbox" id="ignore-case" name="ignore-case">
+                <label for="ignore-case">Case insensitive</label>
+            </div>
+            <div class="hint">
+                Press <span class="key">↵</span> to analyse or <span class="key">Esc</span> to cancel
+            </div>
+        </div>
+
+        <div id="results-section" style="display:none">
+            <div class="count-row">
+                <span id="count-badge" class="count-badge"></span>
+                <span id="count-text" class="count-text"></span>
+            </div>
+
+            <details id="unique-section">
+                <summary>
+                    <div class="summary-left">
+                        <span class="toggle-arrow">▶</span>
+                        <span id="unique-label"></span>
+                    </div>
+                    <button class="copy-btn" id="copy-unique">Copy</button>
+                </summary>
+                <div id="unique-list" class="list-content"></div>
+            </details>
+
+            <details id="duplicates-section">
+                <summary>
+                    <div class="summary-left">
+                        <span class="toggle-arrow">▶</span>
+                        <span id="duplicates-label"></span>
+                    </div>
+                    <button class="copy-btn" id="copy-duplicates">Copy</button>
+                </summary>
+                <div id="duplicates-list" class="list-content"></div>
+            </details>
         </div>
     </div>
 
-    <div id="results-section" style="display:none">
-        <div id="duplicate-count" class="duplicate-count"></div>
-
-        <details id="unique-section">
-            <summary>
-                <div class="summary-left">
-                    <span class="toggle-arrow">▶</span>
-                    <span id="unique-label"></span>
-                </div>
-                <button class="copy-btn" id="copy-unique">Copy</button>
-            </summary>
-            <div id="unique-list" class="list-content"></div>
-        </details>
-
-        <details id="duplicates-section">
-            <summary>
-                <div class="summary-left">
-                    <span class="toggle-arrow">▶</span>
-                    <span id="duplicates-label"></span>
-                </div>
-                <button class="copy-btn" id="copy-duplicates">Copy</button>
-            </summary>
-            <div id="duplicates-list" class="list-content"></div>
-        </details>
-    </div>
-
     <script>
-        const textarea = document.getElementById('string-input');
-        const resultsSection = document.getElementById('results-section');
-        const duplicateCount = document.getElementById('duplicate-count');
-        const uniqueLabel = document.getElementById('unique-label');
+        const textarea        = document.getElementById('string-input');
+        const resultsSection  = document.getElementById('results-section');
+        const countBadge      = document.getElementById('count-badge');
+        const countText       = document.getElementById('count-text');
+        const uniqueLabel     = document.getElementById('unique-label');
         const duplicatesLabel = document.getElementById('duplicates-label');
-        const uniqueList = document.getElementById('unique-list');
-        const duplicatesList = document.getElementById('duplicates-list');
-        const copyUniqueBtn = document.getElementById('copy-unique');
-        const copyDuplicatesBtn = document.getElementById('copy-duplicates');
-        const uniqueSection = document.getElementById('unique-section');
+        const uniqueList      = document.getElementById('unique-list');
+        const duplicatesList  = document.getElementById('duplicates-list');
+        const copyUniqueBtn   = document.getElementById('copy-unique');
+        const copyDupsBtn     = document.getElementById('copy-duplicates');
+        const uniqueSection   = document.getElementById('unique-section');
         const duplicatesSection = document.getElementById('duplicates-section');
+        const contentWrap     = document.getElementById('content-wrap');
+        const newlinesOnly    = document.getElementById('newlines-only');
+        const ignoreCase      = document.getElementById('ignore-case');
+
+        const PAD = 24; // modal-window padding top + bottom
 
         let currentUnique = [];
         let currentDuplicates = [];
 
-        document.addEventListener('DOMContentLoaded', () => {
-            textarea.focus();
-        });
+        document.addEventListener('DOMContentLoaded', () => textarea.focus());
 
-        function processInput(input) {
-            const items = input.split(/[\s\n]+/).map(s => s.trim()).filter(Boolean);
+        function resizeToContent() {
+            // Let the DOM settle (details animation) then measure real content height
+            requestAnimationFrame(() => {
+                window.electronAPI.resizeWindow(contentWrap.scrollHeight + PAD);
+            });
+        }
+
+        function processInput(input, splitNewlinesOnly, caseInsensitive) {
+            const sep   = splitNewlinesOnly ? /\n+/ : /[\s\n]+/;
+            const items = input.split(sep).map(s => s.trim()).filter(Boolean);
+
+            // key → { canonical, count }
             const seen = new Map();
-
             for (const item of items) {
-                seen.set(item, (seen.get(item) || 0) + 1);
-            }
-
-            const unique = [];
-            const duplicates = [];
-
-            for (const [item, count] of seen.entries()) {
-                unique.push(item);
-                if (count > 1) {
-                    duplicates.push(item);
+                const key = caseInsensitive ? item.toLowerCase() : item;
+                if (seen.has(key)) {
+                    seen.get(key).count++;
+                } else {
+                    seen.set(key, { canonical: item, count: 1 });
                 }
             }
 
+            const unique = [], duplicates = [];
+            for (const { canonical, count } of seen.values()) {
+                unique.push(canonical);
+                if (count > 1) duplicates.push(canonical);
+            }
             return { unique, duplicates };
         }
 
         function showCopiedFeedback(btn) {
+            const orig = btn.textContent;
             btn.textContent = 'Copied!';
             btn.classList.add('copied');
-            setTimeout(() => {
-                btn.textContent = 'Copy';
-                btn.classList.remove('copied');
-            }, 1500);
+            setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
         }
 
-        copyUniqueBtn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            if (currentUnique.length > 0) {
+        copyUniqueBtn.addEventListener('click', async e => {
+            e.stopPropagation(); e.preventDefault();
+            if (currentUnique.length) {
                 await window.electronAPI.copyToClipboard(currentUnique.join('\n'));
                 showCopiedFeedback(copyUniqueBtn);
             }
         });
 
-        copyDuplicatesBtn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            if (currentDuplicates.length > 0) {
+        copyDupsBtn.addEventListener('click', async e => {
+            e.stopPropagation(); e.preventDefault();
+            if (currentDuplicates.length) {
                 await window.electronAPI.copyToClipboard(currentDuplicates.join('\n'));
-                showCopiedFeedback(copyDuplicatesBtn);
+                showCopiedFeedback(copyDupsBtn);
             }
         });
 
-        textarea.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-            }
+        // Resize when details sections are toggled
+        uniqueSection.addEventListener('toggle', resizeToContent);
+        duplicatesSection.addEventListener('toggle', resizeToContent);
+
+        textarea.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
         });
 
-        textarea.addEventListener('keyup', (event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
+        textarea.addEventListener('keyup', e => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
                 const input = textarea.value.trim();
                 if (!input) return;
 
-                const { unique, duplicates } = processInput(input);
-                currentUnique = unique;
+                const { unique, duplicates } = processInput(input, newlinesOnly.checked, ignoreCase.checked);
+                currentUnique     = unique;
                 currentDuplicates = duplicates;
 
                 const dupCount = duplicates.length;
 
                 if (dupCount === 0) {
-                    duplicateCount.textContent = 'No duplicates found';
-                    duplicateCount.className = 'duplicate-count no-duplicates';
+                    countBadge.textContent = '✓ No duplicates';
+                    countBadge.className   = 'count-badge no-dupes';
+                    countText.textContent  = `${unique.length} unique value${unique.length !== 1 ? 's' : ''}`;
                 } else {
-                    duplicateCount.textContent = `${dupCount} duplicate${dupCount > 1 ? 's' : ''} found`;
-                    duplicateCount.className = 'duplicate-count has-duplicates';
+                    countBadge.textContent = `${dupCount} duplicate${dupCount !== 1 ? 's' : ''}`;
+                    countBadge.className   = 'count-badge has-dupes';
+                    countText.textContent  = `${unique.length} unique value${unique.length !== 1 ? 's' : ''}`;
                 }
 
-                uniqueLabel.textContent = `Unique values (${unique.length})`;
-                uniqueList.textContent = unique.join('\n');
-
+                uniqueLabel.textContent     = `Unique (${unique.length})`;
+                uniqueList.textContent      = unique.join('\n');
                 duplicatesLabel.textContent = `Duplicates (${duplicates.length})`;
-                duplicatesList.textContent = duplicates.join('\n');
+                duplicatesList.textContent  = duplicates.join('\n');
 
-                uniqueSection.open = false;
+                uniqueSection.open             = false;
                 duplicatesSection.style.display = dupCount > 0 ? '' : 'none';
-                duplicatesSection.open = false;
+                duplicatesSection.open          = false;
 
                 resultsSection.style.display = '';
+                resizeToContent();
 
-            } else if (event.key === 'Escape') {
+            } else if (e.key === 'Escape') {
                 window.electronAPI.closeRemoveDuplicates();
             }
         });

@@ -1,15 +1,17 @@
 const { createDarkWindow } = require('../windows/window-utils');
 const path = require('path');
+const { parse } = require('csv-parse/sync');
 
 class ExtractValueCommand {
     constructor(app, settingsManager) {
         this.app = app;
         this.settings = settingsManager;
         this.window = null;
+        this.dataFormat = null;
+        this.csvData = null;
     }
 
     createWindow() {
-
         if (this.window) {
             this.window.focus();
             return;
@@ -28,6 +30,8 @@ class ExtractValueCommand {
 
         this.window.on('closed', () => {
             this.window = null;
+            this.dataFormat = null;
+            this.csvData = null;
         });
 
         this.window.on('blur', () => {
@@ -35,21 +39,44 @@ class ExtractValueCommand {
         });
     }
 
-
     setupIpc(ipcMain) {
-        ipcMain.handle('extract-paths', (event, jsonString) => {
-            try {                const data = JSON.parse(jsonString);
-                return paths;
+        ipcMain.handle('extract-paths', (event, inputString) => {
+            try {
+                try {
+                    const data = JSON.parse(inputString);
+                    this.dataFormat = 'json';
+                    this.csvData = null;
+                    return this.extractPaths(data);
+                } catch (jsonError) {
+                    const csvData = parse(inputString, { columns: true, skip_empty_lines: true, trim: true });
+                    if (csvData.length === 0) throw new Error('CSV has no data rows');
+                    this.dataFormat = 'csv';
+                    this.csvData = csvData;
+                    return Object.keys(csvData[0]);
+                }
             } catch (error) {
-                return { error: `Invalid JSON format: ${error.message}` };
+                return { error: `Invalid format: ${error.message}. Please provide valid JSON or CSV.` };
             }
         });
 
         ipcMain.handle('extract-values', (event, { jsonString, path }) => {
             try {
+                if (this.dataFormat === 'csv' && this.csvData) {
+                    const seen = new Set();
+                    const values = [];
+                    this.csvData.forEach(row => {
+                        const v = row[path];
+                        if (v !== undefined && v !== '' && !seen.has(v)) {
+                            seen.add(v);
+                            values.push(v);
+                        }
+                    });
+                    return values;
+                }
                 const data = JSON.parse(jsonString);
                 return this.extractValues(data, path);
             } catch (error) {
+                console.error('Error extracting values:', error);
                 return { error: 'Failed to extract values' };
             }
         });
@@ -65,15 +92,15 @@ class ExtractValueCommand {
         if (!Array.isArray(data) && typeof data === 'object' && data !== null) {
             data = [data];
         }
-        
+
         data.forEach(item => {
             if (!item || typeof item !== 'object') return;
-            
+
             Object.entries(item).forEach(([key, value]) => {
                 if (key === 'attributes') return;
-                
+
                 const currentPath = prefix ? `${prefix}.${key}` : key;
-                
+
                 if (typeof value === 'object' && value !== null) {
                     if (value.records) {
                         if (value.records.length > 0) {
@@ -106,12 +133,12 @@ class ExtractValueCommand {
 
         data.forEach(item => {
             let current = item;
-            
+
             for (let i = 0; i < pathParts.length; i++) {
                 const part = pathParts[i];
-                
+
                 if (!current) break;
-                
+
                 if (part === 'records') {
                     if (current.records && Array.isArray(current.records)) {
                         const nextPart = pathParts[i + 1];
@@ -132,34 +159,6 @@ class ExtractValueCommand {
         });
 
         return Array.from(values);
-    }
-
-    setupIpc(ipcMain) {
-        ipcMain.handle('extract-paths', (event, jsonString) => {
-            try {
-                const data = JSON.parse(jsonString);
-                return this.extractPaths(data);
-            } catch (error) {
-                console.error('Error extracting paths:', error);
-                return { error: 'Invalid JSON format' };
-            }
-        });
-
-        ipcMain.handle('extract-values', (event, { jsonString, path }) => {
-            try {
-                const data = JSON.parse(jsonString);
-                return this.extractValues(data, path);
-            } catch (error) {
-                console.error('Error extracting values:', error);
-                return { error: 'Failed to extract values' };
-            }
-        });
-
-        ipcMain.on('close-extract-value', () => {
-            if (this.window) {
-                this.window.close();
-            }
-        });
     }
 }
 

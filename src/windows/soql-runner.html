@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';">
+    <link rel="stylesheet" href="../styles/soql-runner.css">
+    <link rel="stylesheet" href="../styles/query-library.css">
+    <title>SOQL Runner</title>
+</head>
+<body>
+<div class="runner-window">
+
+    <!-- Title bar -->
+    <div class="runner-bar">
+        <span class="runner-bar-title">SOQL Runner</span>
+        <select class="runner-org-select" id="org-select">
+            <option value="">Loading orgs…</option>
+        </select>
+        <span class="runner-org-status" id="org-status"></span>
+        <button class="runner-icon-btn" id="btn-refresh-orgs" title="Refresh org list">↻</button>
+        <button class="runner-icon-btn" id="btn-library" title="Query library">📚</button>
+        <button class="runner-close" id="btn-close" title="Close (Esc)">✕</button>
+    </div>
+
+    <!-- Org hint banner -->
+    <div class="runner-org-hint hidden" id="org-hint"></div>
+
+    <!-- Query panel -->
+    <div class="runner-query-panel" id="query-panel">
+        <div class="runner-editor-area">
+            <div class="runner-editor-wrap">
+                <textarea class="runner-textarea" id="soql-input"
+                    placeholder="SELECT Id, Name FROM Account LIMIT 200"
+                    rows="3" spellcheck="false"></textarea>
+            </div>
+            <div class="runner-actions">
+                <span class="runner-error" id="run-error"></span>
+                <button class="runner-icon-btn" id="btn-save" title="Save query to favorites">☆</button>
+                <button class="runner-run-btn" id="btn-run">Run  ⌘↵</button>
+            </div>
+        </div>
+        <div class="soql-autocomplete" id="soql-autocomplete"></div>
+    </div>
+
+    <!-- Save popover (inline, hidden by default) -->
+    <div class="runner-save-popover hidden" id="save-popover">
+        <input type="text" class="runner-save-name" id="save-name" placeholder="Query name…" spellcheck="false">
+        <button class="runner-run-btn" id="btn-save-confirm">Save</button>
+        <button class="runner-icon-btn" id="btn-save-cancel">✕</button>
+    </div>
+
+    <!-- Library panel (hidden by default) -->
+    <div class="runner-library-panel hidden" id="library-panel"></div>
+
+    <!-- Result panel (hidden until query runs) -->
+    <div class="runner-result-panel hidden" id="result-panel">
+        <div class="runner-result-bar">
+            <span class="runner-result-count" id="result-count"></span>
+            <div class="runner-search-wrap">
+                <input type="text" class="runner-search-input" id="result-search" placeholder="Search…" spellcheck="false">
+                <button class="runner-icon-btn runner-search-clear hidden" id="btn-search-clear">✕</button>
+            </div>
+            <div class="runner-export-btns">
+                <button class="runner-export-btn" id="btn-export-csv"      title="Copy as CSV">CSV</button>
+                <button class="runner-export-btn" id="btn-export-sheet"    title="Copy as TSV — paste into Sheets/Excel">Sheet</button>
+                <button class="runner-export-btn" id="btn-export-download" title="Download as CSV file">↓ CSV</button>
+            </div>
+            <button class="runner-rerun-btn" id="btn-rerun">↻ Re-run</button>
+            <button class="runner-edit-btn" id="btn-edit">← Edit</button>
+        </div>
+        <div class="runner-table-wrap" id="table-wrap"></div>
+    </div>
+
+</div>
+
+<script src="../utils/table-export.js"></script>
+<script src="../utils/soql-autocomplete.js"></script>
+<script src="../utils/query-library-ui.js"></script>
+<script src="./soql-runner/main.js"></script>
+</body>
+</html>

@@ -6,7 +6,7 @@ if (navigator.userAgent.includes('Macintosh') || navigator.platform.toUpperCase(
 
 // ── Shared state ───────────────────────────────────────────────────────────
 
-const WORKBENCH_VERSION = '0.3.0';
+const WORKBENCH_VERSION = '0.1.9';
 
 var tableCounter = 0;
 var tables = [];
@@ -18,6 +18,11 @@ var currentOp = 'enrich';
 var editingTableEntry = null;
 var soqlEditingEntry = null;
 var pasteEditingEntry = null;
+var workbenchSoqlEnabled = true;
+var workbenchDmlEnabled = true;
+var pasteEditingLargeParsed = null;
+
+const LARGE_TABLE_THRESHOLD = 10_000;
 
 // ── DWLogic bridge ─────────────────────────────────────────────────────────
 
@@ -27,7 +32,7 @@ var { evalCondition, evaluateLogicExpression, applyRowFilter,
       renameColumnInSoql, renameColumnInRecipe,
       parseTsv, parseCsv,
       genColId, formulaToIds, reconcileSourceColumns: _reconcileSourceColumns,
-      migrateModelV1toV2, recipeReferencesId, computeColumnDiff,
+      recipeReferencesId, computeColumnDiff,
       evalColorRule } = window.DWLogic;
 
 function computeFromRecipe(recipe) { return _computeFromRecipe(recipe, tables); }
@@ -52,6 +57,10 @@ var pasteEditFileInfo   = document.getElementById('paste-edit-file-info');
 var pasteEditFileName   = document.getElementById('paste-edit-file-name');
 var pasteEditFileMeta   = document.getElementById('paste-edit-file-meta');
 var pasteEditFileClear  = document.getElementById('paste-edit-file-clear');
+var pasteEditDivider    = document.getElementById('paste-edit-divider');
+var pasteLargeNotice    = document.getElementById('paste-large-notice');
+var pasteLargeStat      = document.getElementById('paste-large-stat');
+var pasteLargeDownload  = document.getElementById('paste-large-download');
 var viewFile         = document.getElementById('view-file');
 var fileInput        = document.getElementById('file-input');
 var fileDropZone     = document.getElementById('file-drop-zone');
@@ -71,14 +80,23 @@ var soqlError       = document.getElementById('soql-error');
 var bindingsHint    = document.getElementById('bindings-hint');
 var btnResult       = document.getElementById('btn-result');
 var resultPanel     = document.getElementById('result-panel');
+var btnDml          = document.getElementById('btn-dml');
+var dmlPanel        = document.getElementById('dml-panel');
 var resultConfig    = document.getElementById('result-config');
 var btnCreateResult = document.getElementById('btn-create-result');
 var resultError     = document.getElementById('result-error');
 var resultDescription = document.getElementById('result-description');
-var btnSchema       = document.getElementById('btn-schema');
-var btnSaveModel    = document.getElementById('btn-save-model');
-var btnLoadModel    = document.getElementById('btn-load-model');
+var btnSaveModel     = document.getElementById('btn-save-model');
+var btnSnapshotModel = document.getElementById('btn-save-snapshot');
+var btnLoadModel     = document.getElementById('btn-load-model');
+var modelFilenameEl  = document.getElementById('model-filename');
+var schemaBarTitle   = document.getElementById('schema-bar-title');
 var schemaOverlay   = document.getElementById('schema-overlay');
+
+// ── Schema-level metadata ──────────────────────────────────────────────────
+var schemaName        = '';
+var schemaDescription = '';
+var schemaCreatedAt   = null;
 var schemaCanvas    = document.getElementById('schema-canvas');
 var schemaTooltip   = document.getElementById('schema-tooltip');
 var schemaPreview        = document.getElementById('schema-preview');
@@ -92,7 +110,25 @@ var schemaPreviewError   = document.getElementById('schema-preview-error');
 
 document.getElementById('schema-preview-close').addEventListener('click', () => schemaPreview.classList.add('hidden'));
 
-document.getElementById('schema-preview-delete').addEventListener('click', () => {
+const schemaPreviewDeleteBtn = document.getElementById('schema-preview-delete');
+let _deleteConfirmTimer = null;
+
+function resetDeleteConfirm() {
+    clearTimeout(_deleteConfirmTimer);
+    schemaPreviewDeleteBtn.classList.remove('confirm');
+    schemaPreviewDeleteBtn.textContent = '🗑';
+    schemaPreviewDeleteBtn.title = 'Delete this table';
+}
+
+schemaPreviewDeleteBtn.addEventListener('click', () => {
+    if (!schemaPreviewDeleteBtn.classList.contains('confirm')) {
+        schemaPreviewDeleteBtn.classList.add('confirm');
+        schemaPreviewDeleteBtn.textContent = 'Delete?';
+        schemaPreviewDeleteBtn.title = 'Click again to confirm';
+        _deleteConfirmTimer = setTimeout(resetDeleteConfirm, 3000);
+        return;
+    }
+    resetDeleteConfirm();
     const t = tables.find(u => u.id === schemaPreview.dataset.tableId);
     if (!t) return;
     const card = document.querySelector(`.table-card[data-table-id="${t.id}"]`);
@@ -190,7 +226,7 @@ function renderBindingsHint(hintEl, targetTextarea, currentTableId = null) {
     const excluded = currentTableId
         ? new Set([currentTableId, ...getTransitiveDependents(currentTableId)])
         : new Set();
-    const visible = tables.filter(t => !excluded.has(t.id));
+    const visible = tables.filter(t => !excluded.has(t.id) && t.source !== 'dml');
     if (visible.length === 0) { hintEl.classList.remove('visible'); return; }
 
     hintEl.appendChild(document.createTextNode('Available: '));
@@ -249,7 +285,7 @@ function updateBindingsHint() {
 
 function getDependencies(recipe) {
     if (!recipe) return [];
-    if (recipe.op === 'transform' || recipe.op === 'split') return [recipe.sourceId];
+    if (recipe.op === 'transform' || recipe.op === 'split' || recipe.op === 'group') return [recipe.sourceId];
     return [recipe.leftId, recipe.rightId].filter(Boolean);
 }
 
@@ -260,8 +296,9 @@ function getDependencies(recipe) {
  * Returns the array of column IDs that were removed (for broken-reference detection).
  */
 function applyColumnRenames(tableEntry, newRawColumns) {
-    // Use provided raw columns or fall back to current columns array
-    let raw = newRawColumns || tableEntry.columns;
+    // Use provided raw columns, but if empty or absent preserve the existing schema.
+    // An empty result (0 rows) carries no column info — don't wipe the existing columns.
+    let raw = (newRawColumns && newRawColumns.length > 0) ? newRawColumns : tableEntry.columns;
 
     // Deduplicate raw names
     const seen = new Map();
@@ -285,6 +322,20 @@ function applyColumnRenames(tableEntry, newRawColumns) {
     }
 
     return _reconcileSourceColumns(tableEntry, raw);
+}
+
+/**
+ * After computeFromRecipe, re-apply any column names the user explicitly renamed
+ * in a result table (marked with explicit:true). Source-propagated names (no flag)
+ * are not preserved so that upstream renames still flow through normally.
+ */
+function preserveResultRenames(existingDefs, newDefs) {
+    if (!existingDefs || existingDefs.length === 0) return newDefs;
+    const byId = new Map(existingDefs.map(d => [d.id, d]));
+    return newDefs.map(d => {
+        const old = byId.get(d.id);
+        return (old && old.explicit) ? { ...d, name: old.name, explicit: true } : d;
+    });
 }
 
 /**
@@ -333,21 +384,6 @@ function markDependentsStale(changedId) {
     visit(changedId);
 }
 
-function tableToCsv(columns, rows) {
-    const escape = v => {
-        const s = v == null ? '' : String(v);
-        return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-    return [columns, ...rows].map(row => row.map(escape).join(',')).join('\r\n');
-}
-
-function tableToTsv(columns, rows) {
-    const escape = v => {
-        const s = v == null ? '' : String(v);
-        return s.includes('\t') || s.includes('\n') || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-    return [columns, ...rows].map(row => row.map(escape).join('\t')).join('\r\n');
-}
 
 function showError(el, msg) {
     el.textContent = msg;
@@ -380,6 +416,11 @@ function closePanel() {
     pasteEditFile.classList.add('hidden');
     pasteEditFileInfo.classList.add('hidden');
     pasteEditDropZone.classList.remove('hidden');
+    pasteEditingLargeParsed = null;
+    pasteInput.style.display = '';
+    btnImport.disabled = false;
+    pasteLargeNotice.classList.add('hidden');
+    pasteEditDivider.style.display = '';
     const pasteColDiff = document.getElementById('paste-col-diff');
     if (pasteColDiff) { pasteColDiff.classList.add('hidden'); pasteColDiff.innerHTML = ''; }
 }

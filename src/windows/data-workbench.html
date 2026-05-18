@@ -13,15 +13,13 @@
     <!-- Header -->
     <div class="header">
         <div class="header-left">
-            <span class="header-title">Data Workbench</span><span class="beta-badge" id="workbench-version-badge">BETA</span>
+            <span class="header-title">Data Workbench</span><span class="beta-badge" id="workbench-version-badge">BETA</span><span class="model-filename hidden" id="model-filename"></span>
         </div>
         <div class="header-right" style="display:flex;gap:8px;">
+            <button class="btn-primary secondary" id="btn-new-model">New</button>
             <button class="btn-primary secondary" id="btn-load-model">Load</button>
             <button class="btn-primary secondary" id="btn-save-model" style="display:none;">Save</button>
-            <button class="btn-primary secondary" id="btn-schema" style="display:none;">Schema</button>
-            <button class="btn-primary secondary" id="btn-color-rules" style="display:none;" title="Manage card color rules">⬤ Colors</button>
-            <button class="btn-primary secondary" id="btn-result" style="display:none;">+ Add Result</button>
-            <button class="btn-primary secondary" id="btn-add">+ Add Table</button>
+            <button class="btn-primary secondary" id="btn-save-snapshot" style="display:none;" title="Save a snapshot with all table data embedded">Save Snapshot</button>
         </div>
     </div>
 
@@ -48,7 +46,12 @@
                     <span class="file-info-meta" id="paste-edit-file-meta"></span>
                     <button class="file-info-clear" id="paste-edit-file-clear" title="Clear">✕</button>
                 </div>
-                <div class="card-edit-divider">— or paste / edit manually —</div>
+                <div class="card-edit-divider" id="paste-edit-divider">— or paste / edit manually —</div>
+            </div>
+            <div class="large-table-notice hidden" id="paste-large-notice">
+                <div class="large-table-notice-stat" id="paste-large-stat"></div>
+                <div class="large-table-notice-text">This table is too large to edit manually. Drop a new CSV or TSV file above to replace it, or download the current data to edit externally.</div>
+                <button type="button" class="btn-secondary" id="paste-large-download">↓ Download as CSV</button>
             </div>
             <textarea class="add-textarea" id="paste-input"
                 placeholder="Paste your spreadsheet data here (Tab-separated columns, e.g. copied from Excel or Google Sheets)..."></textarea>
@@ -81,8 +84,11 @@
 
         <!-- SOQL view -->
         <div class="mode-view" id="view-soql">
-            <textarea class="add-textarea" id="soql-input"
-                placeholder="SELECT Id, Name, AccountId&#10;FROM Contact&#10;LIMIT 200"></textarea>
+            <div class="soql-editor-wrap">
+                <textarea class="add-textarea" id="soql-input"
+                    placeholder="SELECT Id, Name, AccountId&#10;FROM Contact&#10;LIMIT 200"></textarea>
+                <div class="soql-autocomplete hidden" id="soql-autocomplete"></div>
+            </div>
             <div class="soql-controls">
                 <select class="org-select" id="org-select">
                     <option value="">Loading orgs...</option>
@@ -95,6 +101,62 @@
                 <span class="panel-error" id="soql-error"></span>
                 <button class="btn-primary" id="btn-run-query">Run Query</button>
             </div>
+        </div>
+    </div>
+
+    <!-- DML Panel -->
+    <div class="add-panel" id="dml-panel">
+        <div class="dml-panel-body">
+            <div class="dml-form-row">
+                <label class="dml-label">Source table</label>
+                <select id="dml-source-select" class="dml-select"></select>
+            </div>
+            <div class="dml-form-row">
+                <label class="dml-label">Destination org</label>
+                <select id="dml-org-select" class="dml-select"></select>
+            </div>
+            <div class="dml-form-row dml-object-wrap">
+                <label class="dml-label">Salesforce object</label>
+                <input type="text" id="dml-object-input" class="dml-input" placeholder="e.g. Account, Contact__c…" autocomplete="off" spellcheck="false">
+                <div class="dml-ac-dropdown hidden" id="dml-object-dropdown"></div>
+                <datalist id="dml-field-datalist"></datalist>
+            </div>
+            <div class="dml-form-row">
+                <label class="dml-label">Operation</label>
+                <div class="dml-op-group">
+                    <label class="dml-op-opt"><input type="radio" name="dml-op" value="insert"> Insert</label>
+                    <label class="dml-op-opt"><input type="radio" name="dml-op" value="update" checked> Update</label>
+                    <label class="dml-op-opt"><input type="radio" name="dml-op" value="upsert"> Upsert</label>
+                </div>
+            </div>
+            <div class="dml-form-row hidden" id="dml-extid-row">
+                <label class="dml-label">External ID field</label>
+                <input type="text" id="dml-extid-input" class="dml-input" placeholder="e.g. External_Id__c" autocomplete="off" spellcheck="false">
+            </div>
+            <div class="dml-form-row-inline">
+                <div class="dml-form-row">
+                    <label class="dml-label" for="dml-batch-size">Batch size</label>
+                    <input type="number" id="dml-batch-size" class="dml-input dml-batch-input" value="200" min="1" max="200" step="1">
+                </div>
+                <div class="dml-form-row">
+                    <label class="dml-label" for="dml-allornone">All or none</label>
+                    <label class="dml-toggle-label">
+                        <input type="checkbox" id="dml-allornone">
+                        <span class="dml-toggle-hint">Roll back all if any fails</span>
+                    </label>
+                </div>
+            </div>
+            <div class="dml-mappings-section hidden" id="dml-mappings-section">
+                <div class="dml-mappings-header">
+                    <span class="dml-mappings-title">Column → SF field mappings</span>
+                    <span class="dml-mappings-hint">Uncheck to exclude a column</span>
+                </div>
+                <div class="dml-mappings-list" id="dml-mappings-list"></div>
+            </div>
+        </div>
+        <div class="panel-footer">
+            <span class="panel-error" id="dml-panel-error"></span>
+            <button class="btn-primary" id="btn-create-dml">Create DML Card</button>
         </div>
     </div>
 
@@ -125,6 +187,10 @@
                 <span class="op-name">Split</span>
                 <span class="op-desc">Split one source into N tables by condition</span>
             </button>
+            <button class="op-tile" data-op="group">
+                <span class="op-name">Group</span>
+                <span class="op-desc">Group rows by a column and aggregate</span>
+            </button>
         </div>
         <div id="result-config"></div>
         <div class="panel-footer">
@@ -136,8 +202,8 @@
     </div>
     <div class="schema-tooltip hidden" id="schema-tooltip"></div>
 
-    <!-- Tables content area -->
-    <div class="content" id="content">
+    <!-- Tables content area (hidden — cards live here for JS, schema is the UI) -->
+    <div class="content hidden" id="content">
         <div class="empty-state" id="empty-state">
             No tables yet.<br>
             Click <strong>+ Add Table</strong> to paste data or run a SOQL query.
@@ -145,18 +211,17 @@
     </div>
 
     <!-- Schema overlay -->
-    <div class="schema-overlay hidden" id="schema-overlay">
+    <div class="schema-overlay" id="schema-overlay">
         <div class="schema-bar">
-            <span class="schema-bar-title">Schema</span>
-            <div class="schema-legend">
-                <span class="schema-legend-item"><span class="schema-legend-dot paste"></span>Paste</span>
-                <span class="schema-legend-item"><span class="schema-legend-dot soql"></span>SOQL</span>
-                <span class="schema-legend-item"><span class="schema-legend-dot res"></span>Result</span>
-                <span class="schema-legend-item" style="margin-left:8px;border-left:1px solid #2a2a2a;padding-left:14px;">
-                    <svg width="22" height="10" style="flex-shrink:0"><line x1="0" y1="5" x2="22" y2="5" stroke="#555" stroke-width="1.5" stroke-dasharray="4 3"/></svg>
-                    SOQL binding
-                </span>
-            </div>
+            <span class="schema-bar-title" id="schema-bar-title" title="Click to edit name and description">Schema</span>
+            <div class="schema-legend" id="schema-legend"></div>
+            <div class="schema-bar-spacer"></div>
+            <button class="schema-bar-btn" id="btn-color-rules" style="display:none;" title="Manage card color rules">⬤ Colors</button>
+            <button class="schema-bar-btn" id="btn-result" style="display:none;">+ Add Result</button>
+            <button class="schema-bar-btn" id="btn-dml" style="display:none;" title="Create a DML action card to insert/update/upsert records in Salesforce">+ DML</button>
+            <button class="schema-bar-btn" id="btn-add">+ Add Table</button>
+            <div class="schema-bar-divider"></div>
+            <button class="schema-bar-btn" id="btn-schema-fit" title="Fit to view (double-click canvas)">⊡ Fit</button>
         </div>
         <div class="schema-main">
             <div class="schema-canvas" id="schema-canvas"></div>
@@ -167,11 +232,17 @@
                     <span class="schema-preview-renames hidden" id="schema-preview-renames">⇄</span>
                     <span class="schema-preview-badge" id="schema-preview-badge"></span>
                     <span class="schema-preview-meta" id="schema-preview-meta"></span>
-                    <button class="btn-danger schema-preview-delete-btn" id="schema-preview-delete" title="Delete this table">✕ Delete</button>
+                    <button class="schema-search-toggle" id="schema-search-toggle" title="Search in table">⌕</button>
+                    <button class="schema-preview-delete-btn" id="schema-preview-delete" title="Delete this table">🗑</button>
                     <button class="btn-schema-close" id="schema-preview-close" title="Close preview">✕</button>
                 </div>
                 <div class="schema-preview-error panel-error" id="schema-preview-error"></div>
                 <div class="schema-preview-desc" id="schema-preview-desc" contenteditable="true" data-placeholder="Add a description…"></div>
+                <div class="schema-preview-search hidden" id="schema-preview-search">
+                    <input type="text" class="schema-search-input" id="schema-search-input" placeholder="Search in table…" autocomplete="off" spellcheck="false">
+                    <span class="schema-search-count" id="schema-search-count"></span>
+                    <button class="schema-search-clear hidden" id="schema-search-clear" title="Clear (Esc)">✕</button>
+                </div>
                 <div class="schema-preview-body" id="schema-preview-body"></div>
             </div>
         </div>
@@ -190,9 +261,16 @@
             </div>
             <div class="color-rules-form-row">
                 <label class="color-rules-label">Condition</label>
-                <div class="color-rule-cond-group">
+                <div class="color-rule-cond-group" id="color-rule-cond-standard">
                     <label class="color-rule-cond-opt"><input type="radio" name="color-rule-cond" value="has_records" checked> Has records</label>
                     <label class="color-rule-cond-opt"><input type="radio" name="color-rule-cond" value="no_records"> No records</label>
+                </div>
+                <div class="color-rule-cond-group hidden" id="color-rule-cond-dml">
+                    <label class="color-rule-cond-opt"><input type="radio" name="color-rule-cond" value="has_records"> Source has records</label>
+                    <label class="color-rule-cond-opt"><input type="radio" name="color-rule-cond" value="no_records"> Source is empty</label>
+                    <label class="color-rule-cond-opt"><input type="radio" name="color-rule-cond" value="dml_not_run"> Not yet run</label>
+                    <label class="color-rule-cond-opt"><input type="radio" name="color-rule-cond" value="dml_done_ok"> Last run: all OK</label>
+                    <label class="color-rule-cond-opt"><input type="radio" name="color-rule-cond" value="dml_done_err"> Last run: has errors</label>
                 </div>
             </div>
             <div class="color-rules-form-row">
@@ -201,9 +279,31 @@
                     <button class="color-swatch" data-color="#ef4444" style="background:#ef4444;" title="Red"></button>
                     <button class="color-swatch" data-color="#f97316" style="background:#f97316;" title="Orange"></button>
                     <button class="color-swatch" data-color="#fbbf24" style="background:#fbbf24;" title="Yellow"></button>
+                    <button class="color-swatch" data-color="#84cc16" style="background:#84cc16;" title="Lime"></button>
                     <button class="color-swatch" data-color="#22c55e" style="background:#22c55e;" title="Green"></button>
+                    <button class="color-swatch" data-color="#14b8a6" style="background:#14b8a6;" title="Teal"></button>
+                    <button class="color-swatch" data-color="#06b6d4" style="background:#06b6d4;" title="Cyan"></button>
                     <button class="color-swatch" data-color="#3b82f6" style="background:#3b82f6;" title="Blue"></button>
+                    <button class="color-swatch" data-color="#6366f1" style="background:#6366f1;" title="Indigo"></button>
                     <button class="color-swatch" data-color="#a855f7" style="background:#a855f7;" title="Purple"></button>
+                    <button class="color-swatch" data-color="#ec4899" style="background:#ec4899;" title="Pink"></button>
+                    <button class="color-swatch" data-color="#f43f5e" style="background:#f43f5e;" title="Rose"></button>
+                    <button class="color-swatch" data-color="#94a3b8" style="background:#94a3b8;" title="Gray"></button>
+                    <button class="color-swatch" data-color="#e2e8f0" style="background:#e2e8f0;" title="White"></button>
+                </div>
+            </div>
+            <div class="color-rules-form-row">
+                <label class="color-rules-label">Border style</label>
+                <div class="color-rule-border-styles" id="color-rule-border-styles">
+                    <button class="border-style-btn selected" data-style="solid" title="Solid">
+                        <svg width="32" height="10"><line x1="2" y1="5" x2="30" y2="5" stroke="currentColor" stroke-width="2"/></svg>
+                    </button>
+                    <button class="border-style-btn" data-style="dashed" title="Dashed">
+                        <svg width="32" height="10"><line x1="2" y1="5" x2="30" y2="5" stroke="currentColor" stroke-width="2" stroke-dasharray="6 3"/></svg>
+                    </button>
+                    <button class="border-style-btn" data-style="dotted" title="Dotted">
+                        <svg width="32" height="10"><line x1="2" y1="5" x2="30" y2="5" stroke="currentColor" stroke-width="2.5" stroke-dasharray="2 3" stroke-linecap="round"/></svg>
+                    </button>
                 </div>
             </div>
             <button class="btn-primary" id="color-rule-add" disabled>+ Add Rule</button>
@@ -213,14 +313,62 @@
 
     <div id="toast-container"></div>
 
-    <!-- Scripts: load order matters (toast → state → logic → table → recipe → schema → color-rules → main) -->
+    <!-- New schema confirmation modal -->
+    <div class="modal-overlay hidden" id="new-model-modal">
+        <div class="modal-box">
+            <div class="modal-title">New Schema</div>
+            <div class="modal-body">
+                <p>This will clear the current schema and all its tables. Any unsaved changes will be lost.</p>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-primary secondary" id="new-model-cancel">Cancel</button>
+                <button class="btn-primary btn-danger" id="new-model-confirm">New Schema</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Snapshot warning modal -->
+    <div class="modal-overlay hidden" id="snapshot-modal">
+        <div class="modal-box">
+            <div class="modal-title">Save Snapshot</div>
+            <div class="modal-body">
+                <p>A snapshot embeds all loaded table data directly into the JSON file. It lets you reopen the workspace later with all data already loaded, without re-running queries or re-importing files.</p>
+                <p class="modal-warning">⚠ Do not share snapshot files if they contain sensitive or personal data. The file is not encrypted and may include GDPR-protected information.</p>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-primary secondary" id="snapshot-modal-cancel">Cancel</button>
+                <button class="btn-primary" id="snapshot-modal-confirm">Save Snapshot</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts: load order matters (toast → state → logic → table → recipe → schema → color-rules → dml → main) -->
+    <script src="../utils/table-export.js"></script>
+    <script src="../utils/soql-autocomplete.js"></script>
     <script src="./data-workbench/toast.js"></script>
     <script src="./data-workbench/logic.js"></script>
     <script src="./data-workbench/state.js"></script>
     <script src="./data-workbench/table.js"></script>
+    <!-- Schema metadata popup -->
+    <div class="schema-meta-popup hidden" id="schema-meta-popup">
+        <div class="schema-meta-row">
+            <label class="schema-meta-label">Name</label>
+            <input class="schema-meta-input" id="schema-meta-name" type="text" placeholder="Schema name" />
+        </div>
+        <div class="schema-meta-row">
+            <label class="schema-meta-label">Description</label>
+            <textarea class="schema-meta-input schema-meta-textarea" id="schema-meta-desc" rows="3" placeholder="Optional description…"></textarea>
+        </div>
+        <div class="schema-meta-actions">
+            <button class="schema-meta-btn-cancel" id="schema-meta-cancel">Cancel</button>
+            <button class="schema-meta-btn-save" id="schema-meta-save">Save</button>
+        </div>
+    </div>
+
     <script src="./data-workbench/recipe.js"></script>
     <script src="./data-workbench/schema.js"></script>
     <script src="./data-workbench/color-rules.js"></script>
+    <script src="./data-workbench/dml.js"></script>
     <script src="./data-workbench/main.js"></script>
 </body>
 </html>

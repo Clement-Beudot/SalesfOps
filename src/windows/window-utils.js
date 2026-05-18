@@ -15,7 +15,6 @@ function createDarkWindow(options = {}) {
             contextIsolation: true,
             webSecurity: true,
             allowRunningInsecureContent: false,
-            enableRemoteModule: false,
             contentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';",
             preload: path.join(__dirname, '../../preload.js')
         },

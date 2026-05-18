@@ -1,6 +1,6 @@
 'use strict';
 
-const { evaluateFormula } = require('../../src/windows/data-workbench/logic');
+const { evaluateFormula, formulaToIds } = require('../../src/windows/data-workbench/logic');
 
 // Helper: evaluate a formula with a simple row context
 // columns = ['SIRET', 'Name', 'Amount', 'Email', 'CodePostal', 'Telephone', 'CA', 'Pays']
@@ -146,6 +146,21 @@ describe('comparison operators', () => {
     test('<= true', () => expect(ef('IF(Amount <= 1500, "yes", "no")')).toBe('yes'));
     test('= string comparison', () => expect(ef('IF(Pays = "FR", "France", "Autre")')).toBe('France'));
     test('<> string comparison', () => expect(ef('IF(Pays <> "BE", "not Belgium", "Belgium")')).toBe('not Belgium'));
+
+    test('= alphanumeric IDs with shared numeric prefix are not equal', () => {
+        // parseFloat("001IV00001abc") === parseFloat("001SZ00000xyz") === 1 → false positive with old code
+        const cols2 = ['AccountId', 'RelatedId'];
+        expect(evaluateFormula('IF(AccountId = RelatedId, "same", "diff")',
+            ['001IV00001VwMIkYAN', '001SZ00000kMwHUYA0'], cols2)).toBe('diff');
+        expect(evaluateFormula('IF(AccountId = RelatedId, "same", "diff")',
+            ['001IV00001bxFdEYAU', '001IV00001bxFdEYAU'], cols2)).toBe('same');
+    });
+
+    test('<> alphanumeric IDs with shared numeric prefix', () => {
+        const cols2 = ['A', 'B'];
+        expect(evaluateFormula('IF(A <> B, "diff", "same")',
+            ['001IV00001avZi1YAE', '001IV00001aveQBYAY'], cols2)).toBe('diff');
+    });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -261,6 +276,19 @@ describe('CLEAN', () => {
     test('removes tab character', () => expect(ef('CLEAN("hello\tworld")')).toBe('helloworld'));
     test('removes newline', () => expect(ef('CLEAN("line1\nline2")')).toBe('line1line2'));
     test('no control chars → unchanged', () => expect(ef('CLEAN("hello")')).toBe('hello'));
+});
+
+describe('COUNT', () => {
+    test('single occurrence', () => expect(ef('COUNT("banana", "a")')).toBe('3'));
+    test('multiple occurrences', () => expect(ef('COUNT("abcabc", "abc")')).toBe('2'));
+    test('no occurrence → 0', () => expect(ef('COUNT("hello", "z")')).toBe('0'));
+    test('empty search → 0', () => expect(ef('COUNT("hello", "")')).toBe('0'));
+    test('non-overlapping matches', () => expect(ef('COUNT("aaaa", "aa")')).toBe('2'));
+    test('case-sensitive by default', () => expect(ef('COUNT("Dupont DUPONT dupont", "dupont")')).toBe('1'));
+    test('case-sensitive explicit true', () => expect(ef('COUNT("Dupont dupont", "dupont", true)')).toBe('1'));
+    test('case-insensitive with false', () => expect(ef('COUNT("Dupont DUPONT dupont", "dupont", false)')).toBe('3'));
+    test('column reference', () => expect(ef('COUNT(Name, "Corp")')).toBe('1'));
+    test('count separators to infer number of values', () => expect(ef('COUNT("a,b,c", ",")')).toBe('2'));
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -544,6 +572,17 @@ describe('nested formulas', () => {
         expect(evaluateFormula('LEFT(Prenom, 1) & LEFT(Nom, 1)', row2, cols2)).toBe('JD');
     });
 
+    test('== and != as aliases for = and <>', () => {
+        const cols2 = ['SIREN'];
+        // == : 9 chars → true → return ''
+        expect(evaluateFormula('IF(LEN(REPLACE(SIREN, " ", "")) == 9, "", REPLACE(SIREN, " ", ""))', ['123 456 789'], cols2)).toBe('');
+        // == : not 9 chars → false → return cleaned value
+        expect(evaluateFormula('IF(LEN(REPLACE(SIREN, " ", "")) == 9, "", REPLACE(SIREN, " ", ""))', ['123 456'], cols2)).toBe('123456');
+        // != : not equal → true
+        expect(evaluateFormula('IF(LEN(SIREN) != 9, "bad", "ok")', ['12345'], cols2)).toBe('bad');
+        expect(evaluateFormula('IF(LEN(SIREN) != 9, "bad", "ok")', ['123456789'], cols2)).toBe('ok');
+    });
+
     test('SIRET length check with LEN+REPLACE', () => {
         const cols2 = ['SIRET'];
         expect(evaluateFormula(
@@ -615,5 +654,161 @@ describe('nested formulas', () => {
     test('deeply nested: PROPER(TRIM(LOWER(UPPER(Name))))', () => {
         const cols2 = ['Name'];
         expect(evaluateFormula('PROPER(TRIM(LOWER(UPPER(Name))))', ['  acme corp  '], cols2)).toBe('Acme Corp');
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Date functions
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('DATEVALUE', () => {
+    test('ISO date passthrough', () => expect(ef('DATEVALUE("2024-01-15")')).toBe('2024-01-15'));
+    test('ISO datetime → date only', () => expect(ef('DATEVALUE("2024-01-15T10:30:00.000Z")')).toBe('2024-01-15'));
+    test('European DD/MM/YYYY', () => expect(ef('DATEVALUE("15/01/2024")')).toBe('2024-01-15'));
+    test('European DD-MM-YYYY', () => expect(ef('DATEVALUE("15-01-2024")')).toBe('2024-01-15'));
+    test('invalid → empty', () => expect(ef('DATEVALUE("not a date")')).toBe(''));
+    test('blank → empty', () => expect(ef('DATEVALUE("")')).toBe(''));
+});
+
+describe('ISDATE', () => {
+    test('valid ISO → TRUE', () => expect(ef('ISDATE("2024-01-15")')).toBe('TRUE'));
+    test('valid datetime → TRUE', () => expect(ef('ISDATE("2024-01-15T10:30:00Z")')).toBe('TRUE'));
+    test('invalid → FALSE', () => expect(ef('ISDATE("hello")')).toBe('FALSE'));
+    test('blank → FALSE', () => expect(ef('ISDATE("")')).toBe('FALSE'));
+});
+
+describe('YEAR / MONTH / DAY', () => {
+    test('YEAR extracts year', () => expect(ef('YEAR("2024-06-30")')).toBe('2024'));
+    test('MONTH extracts month', () => expect(ef('MONTH("2024-06-30")')).toBe('6'));
+    test('DAY extracts day', () => expect(ef('DAY("2024-06-30")')).toBe('30'));
+    test('HOUR extracts hour from datetime', () => expect(ef('HOUR("2024-01-15T14:30:00Z")')).toBe('14'));
+    test('MINUTE extracts minute', () => expect(ef('MINUTE("2024-01-15T14:30:00Z")')).toBe('30'));
+    test('invalid input → empty', () => expect(ef('YEAR("not a date")')).toBe(''));
+});
+
+describe('DATE_ADD', () => {
+    test('add days', () => expect(ef('DATE_ADD("2024-01-15", 10, "day")')).toBe('2024-01-25'));
+    test('add months', () => expect(ef('DATE_ADD("2024-01-15", 2, "month")')).toBe('2024-03-15'));
+    test('add years', () => expect(ef('DATE_ADD("2024-01-15", 1, "year")')).toBe('2025-01-15'));
+    test('subtract days (negative n)', () => expect(ef('DATE_ADD("2024-01-15", -7, "day")')).toBe('2024-01-08'));
+    test('invalid date → empty', () => expect(ef('DATE_ADD("bad", 1, "day")')).toBe(''));
+});
+
+describe('DATE_DIFF', () => {
+    test('diff in days (positive)', () => expect(ef('DATE_DIFF("2024-01-25", "2024-01-15", "day")')).toBe('10'));
+    test('diff in days (negative)', () => expect(ef('DATE_DIFF("2024-01-10", "2024-01-15", "day")')).toBe('-5'));
+    test('diff in months', () => expect(ef('DATE_DIFF("2024-03-15", "2024-01-15", "month")')).toBe('2'));
+    test('diff in years', () => expect(ef('DATE_DIFF("2025-01-15", "2024-01-15", "year")')).toBe('1'));
+    test('invalid date → empty', () => expect(ef('DATE_DIFF("bad", "2024-01-15", "day")')).toBe(''));
+});
+
+describe('DATE_FORMAT', () => {
+    test('DD/MM/YYYY', () => expect(ef('DATE_FORMAT("2024-01-15", "DD/MM/YYYY")')).toBe('15/01/2024'));
+    test('YYYY-MM', () => expect(ef('DATE_FORMAT("2024-06-30", "YYYY-MM")')).toBe('2024-06'));
+    test('YY last two digits', () => expect(ef('DATE_FORMAT("2024-01-05", "DD/MM/YY")')).toBe('05/01/24'));
+    test('with time tokens', () => expect(ef('DATE_FORMAT("2024-01-15T14:30:00Z", "DD/MM/YYYY HH:mm")')).toBe('15/01/2024 14:30'));
+    test('invalid date → empty', () => expect(ef('DATE_FORMAT("bad", "DD/MM/YYYY")')).toBe(''));
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NUMBER / AVERAGE
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('NUMBER', () => {
+    test('pure number string', () => expect(ef('NUMBER("42.5")')).toBe('42.5'));
+    test('integer string', () => expect(ef('NUMBER("100")')).toBe('100'));
+    test('string with prefix → empty', () => expect(ef('NUMBER("€1234")')).toBe(''));
+    test('blank → empty', () => expect(ef('NUMBER("")')).toBe(''));
+    test('text → empty', () => expect(ef('NUMBER("hello")')).toBe(''));
+});
+
+describe('AVERAGE', () => {
+    test('average of literals', () => expect(ef('AVERAGE("10", "20", "30")')).toBe('20'));
+    test('average of two', () => expect(ef('AVERAGE("0", "100")')).toBe('50'));
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// formulaToIds + evaluateFormula round-trip (workbench context)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('formulaToIds', () => {
+    test('converts plain column name to {{id}}', () => {
+        const defs = [{ id: 'c_001', name: 'SIRET' }];
+        expect(formulaToIds('LEFT(SIRET, 9)', defs)).toBe('LEFT({{c_001}}, 9)');
+    });
+
+    test('does not replace function names', () => {
+        const defs = [{ id: 'c_001', name: 'LEFT' }];
+        expect(formulaToIds('LEFT(SIRET, 2)', defs)).toBe('LEFT(SIRET, 2)');
+    });
+
+    test('longer names processed before shorter to avoid partial match', () => {
+        const defs = [
+            { id: 'c_001', name: 'Name' },
+            { id: 'c_002', name: 'Full Name' },
+        ];
+        const result = formulaToIds('[Full Name] & " " & Name', defs);
+        expect(result).toBe('{{c_002}} & " " & {{c_001}}');
+    });
+
+    test('Salesforce __c suffix column', () => {
+        const defs = [{ id: 'c_sf1', name: 'Siren_Number__c' }];
+        const raw = 'IF(LEN(REPLACE(Siren_Number__c, " ", "")) = 9, "", REPLACE(Siren_Number__c, " ", ""))';
+        const converted = formulaToIds(raw, defs);
+        expect(converted).toBe('IF(LEN(REPLACE({{c_sf1}}, " ", "")) = 9, "", REPLACE({{c_sf1}}, " ", ""))');
+    });
+
+    test('idempotent: already-converted formula passes through unchanged', () => {
+        const defs = [{ id: 'c_001', name: 'SIRET' }];
+        const already = 'LEFT({{c_001}}, 9)';
+        expect(formulaToIds(already, defs)).toBe(already);
+    });
+});
+
+describe('formulaToIds + evaluateFormula round-trip with columnDefs', () => {
+    function roundTrip(rawFormula, columnDefs, row, columns) {
+        const stored = formulaToIds(rawFormula, columnDefs);
+        return evaluateFormula(stored, row, columns, columnDefs);
+    }
+
+    test('basic round-trip: LEFT(Name, 3)', () => {
+        const defs = [{ id: 'c_n', name: 'Name' }];
+        expect(roundTrip('LEFT(Name, 3)', defs, ['Acme Corp'], ['Name'])).toBe('Acm');
+    });
+
+    test('Salesforce __c column with = operator (9-char SIREN)', () => {
+        const defs = [{ id: 'c_sf1', name: 'Siren_Number__c' }];
+        const formula = 'IF(LEN(REPLACE(Siren_Number__c, " ", "")) = 9, "", REPLACE(Siren_Number__c, " ", ""))';
+        // 9 chars without spaces → return ""
+        expect(roundTrip(formula, defs, ['123 456 789'], ['Siren_Number__c'])).toBe('');
+        // More than 9 chars → return cleaned value
+        expect(roundTrip(formula, defs, ['123 456 789 012'], ['Siren_Number__c'])).toBe('123456789012');
+        // Empty → 0 chars, not 9 → return ""
+        expect(roundTrip(formula, defs, [''], ['Siren_Number__c'])).toBe('');
+    });
+
+    test('Salesforce __c column with == operator (same formula)', () => {
+        const defs = [{ id: 'c_sf1', name: 'Siren_Number__c' }];
+        const formula = 'IF(LEN(REPLACE(Siren_Number__c, " ", "")) == 9, "", REPLACE(Siren_Number__c, " ", ""))';
+        expect(roundTrip(formula, defs, ['123 456 789'], ['Siren_Number__c'])).toBe('');
+        expect(roundTrip(formula, defs, ['123 456 789 012'], ['Siren_Number__c'])).toBe('123456789012');
+    });
+
+    test('multiple __c columns with same formula', () => {
+        const defs = [
+            { id: 'c_s', name: 'Siren__c' },
+            { id: 'c_n', name: 'Name__c' },
+        ];
+        const formula = 'IF(ISBLANK(Siren__c), Name__c, Siren__c)';
+        expect(roundTrip(formula, defs, ['', 'Acme'], ['Siren__c', 'Name__c'])).toBe('Acme');
+        expect(roundTrip(formula, defs, ['123456', 'Acme'], ['Siren__c', 'Name__c'])).toBe('123456');
+    });
+
+    test('round-trip with raw formula (no columnDefs at save time)', () => {
+        // When srcTable.columnDefs is null, formula is stored as-is and evaluated without columnDefs
+        const formula = 'IF(LEN(REPLACE(Siren_Number__c, " ", "")) = 9, "", REPLACE(Siren_Number__c, " ", ""))';
+        // evaluateFormula with null columnDefs: raw formula, direct column lookup
+        expect(evaluateFormula(formula, ['123 456 789'], ['Siren_Number__c'], null)).toBe('');
+        expect(evaluateFormula(formula, ['12 345 678 901 23'], ['Siren_Number__c'], null)).toBe('1234567890123');
     });
 });
