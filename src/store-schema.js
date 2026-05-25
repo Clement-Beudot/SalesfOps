@@ -164,5 +164,9 @@ module.exports = {
     soqlRunnerShortcut: {
         type: 'string',
         default: ''
+    },
+    accentColor: {
+        type: 'string',
+        default: '#6366f1'
     }
 };

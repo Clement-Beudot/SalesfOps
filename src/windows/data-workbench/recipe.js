@@ -705,7 +705,7 @@ function makeConditionOpSel() {
     return opSel;
 }
 
-function addRowCondition(conditionsList, logicInput, table) {
+function addRowCondition(conditionsList, logicInput, table, prefill = null) {
     const item = document.createElement('div');
     item.className = 'row-condition-item';
 
@@ -743,6 +743,13 @@ function addRowCondition(conditionsList, logicInput, table) {
     conditionsList.appendChild(item);
     renumberConditions(conditionsList);
     if (logicInput) updateLogicDefault(conditionsList, logicInput);
+
+    // Restore saved values
+    if (prefill) {
+        if (prefill.col !== undefined) colSel.value = prefill.col;
+        if (prefill.op  !== undefined) { opSel.value = prefill.op; opSel.dispatchEvent(new Event('change')); }
+        if (prefill.value !== undefined) valInput.value = prefill.value;
+    }
 }
 
 function renumberConditions(conditionsList) {
@@ -1609,6 +1616,7 @@ function serializeModel(includeData = false) {
         updatedAt: now,
         tableCounter,
         colorRules: colorRules.map(r => ({ ...r })),
+        maps: maps.map(m => ({ id: m.id, name: m.name, entries: m.entries.map(e => ({ ...e })) })),
         tables: tables.map(t => {
             const e = { id: t.id, name: t.name, source: t.source, columns: [...t.columns] };
             if (t.columnDefs)  e.columnDefs  = t.columnDefs.map(d => ({ ...d }));
@@ -1634,6 +1642,7 @@ async function deserializeModel(data) {
     // Clear current state
     tables = [];
     colorRules = [];
+    maps = [];
     schemaTransform = { x: 0, y: 0, scale: 1 };
     document.querySelectorAll('.table-card').forEach(c => c.remove());
     emptyState.style.display = '';
@@ -1681,6 +1690,13 @@ async function deserializeModel(data) {
         ...r,
         tableId: idMap[r.tableId] ?? r.tableId
     }));
+    maps = (data.maps || []).map(m => ({
+        id: m.id,
+        name: m.name,
+        entries: (m.entries || []).map(e => ({ ...e }))
+    }));
+    if (typeof window !== 'undefined' && window.DWLogic) window.DWLogic.setMaps(maps);
+    if (typeof window !== 'undefined' && window.renderMapsList) window.renderMapsList();
 
     for (const t of (data.tables || [])) {
         const newId = idMap[t.id];

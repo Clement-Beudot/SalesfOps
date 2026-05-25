@@ -1,6 +1,6 @@
 {
   "name": "SalesfOps",
-  "version": "0.3.2",
+  "version": "0.3.4",
   "description": "A collection of productivity micro-tools for operations teams, with a focus on Salesforce workflows",
   "keywords": [
     "salesforce",
@@ -42,8 +42,6 @@
     "asar": true,
     "asarUnpack": [
       "**/*.node",
-      "node_modules/electron-store/**/*",
-      "src/store-schema.js",
       "node_modules/csv-parse/**/*"
     ],
     "productName": "SalesfOps",
@@ -78,8 +76,7 @@
   },
   "dependencies": {
     "csv-parse": "^6.2.1",
-    "csv-stringify": "^6.7.0",
-    "save-dev": "^0.0.1-security"
+    "csv-stringify": "^6.7.0"
   },
   "homepage": "https://github.com/Clement-Beudot/SalesfOps#readme"
 }

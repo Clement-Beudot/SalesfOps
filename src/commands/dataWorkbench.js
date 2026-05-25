@@ -4,7 +4,8 @@ const { BrowserWindow, dialog } = require('electron');
 const path = require('path');
 const { shellExec } = require('../utils/shell-exec');
 const { runSoqlQuery } = require('../utils/salesforce-query');
-const { runDml, runDmlBatch } = require('../utils/salesforce-rest');
+const sfRest = require('../utils/salesforce-rest');
+const { runDml, runDmlBatch } = sfRest;
 
 class DataWorkbenchCommand {
     constructor(app, settingsManager) {
@@ -89,7 +90,11 @@ class DataWorkbenchCommand {
         }));
 
         ipcMain.handle('data-workbench-run-soql', async (_event, { query, orgIdentifier }) => {
-            return await runSoqlQuery(query, orgIdentifier);
+            const result = await runSoqlQuery(query, orgIdentifier);
+            if (!result.error) {
+                try { result.instanceUrl = (await sfRest.getSession(orgIdentifier)).instanceUrl; } catch {}
+            }
+            return result;
         });
 
         ipcMain.handle('data-workbench-get-orgs', async () => {

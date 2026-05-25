@@ -11,38 +11,88 @@ This software is an independent tool and is not affiliated with, officially conn
 
 As a daily Salesforce user, I found myself constantly switching between different records, formatting data, and performing repetitive tasks throughout the day. I initially created SalesfOps as a personal tool to make my own work more efficient, then decided to share it when I realized how much time it was saving me. The goal is simple: bring these common actions to our fingertips through keyboard shortcuts, eliminating the need to navigate through multiple browser tabs or complex menu structures.
 
-
 Think of it as your personal assistant that stays out of your way until you need it, then appears instantly to help you perform tasks in seconds that would otherwise take multiple clicks and window switches.
 
 ## About This Project
 
-- 🏠 Developed at home 
+- 🏠 Developed at home
 - 🦭 Free and open source
-- ❤️‍🩹 Built by user, for users
+- ❤️‍🩹 Built by users, for users
 - 💡 Inspired by real daily operations workflows
 - 🔄 Continuously improved based on actual usage and feedback
 
 ## Features
 
-- 🚀 Productivity tools:
-  - Quick Salesforce record access by ID
-  - Global Salesforce search from anywhere
-  - Batch opening of multiple Salesforce records
-  - SOQL-ready string concatenation for IDs
-  - JSON data extraction and formatting
-  - Customizable search shortcuts
+### 🔍 Quick commands (global shortcuts)
 
-- ⌨️ Seamless Experience:
-  - Global keyboard shortcuts
-  - Quick command palette
-  - Minimal and distraction-free UI
-  - Dark mode interface
+Instant utilities available from anywhere on your desktop via keyboard shortcuts:
 
-- 🛠️ Operations-focused design:
-  - Configurable workspace settings
-  - Custom search templates
-  - Clipboard enhancement tools
-  - Batch processing capabilities
+- **Open by ID** — jump directly to a Salesforce record from its ID
+- **Global search** — search in Salesforce without leaving your current window
+- **Batch open** — open multiple Salesforce records at once
+- **ID concatenation** — build SOQL-ready `IN` lists from a set of IDs
+- **Extract Value** — extract fields from JSON or CSV data
+- **Custom searches** — configurable search shortcuts for your own workflows
+
+### ⚡ SOQL Runner
+
+A standalone query window for running SOQL queries against any of your connected orgs:
+
+- Org selector with connection status indicator
+- Syntax-aware autocomplete for sObjects and fields
+- Results displayed in a sortable, searchable table
+- Clickable Salesforce IDs — opens the record in the correct org
+- Export results to CSV or copy to clipboard (sheet-ready)
+- Save and reload a personal query library
+
+### 🧪 Data Workbench
+
+A visual data pipeline builder for transforming, enriching and pushing data to Salesforce — without writing code.
+
+**Sources**
+- Import data by pasting from a spreadsheet, uploading a CSV, or running a SOQL query
+- SOQL tables support dynamic bindings (`:ref.column`) to inject values from other loaded tables
+- Refresh individual tables or cascade-refresh an entire dependency chain
+
+**Results** — chain operations to build multi-step pipelines:
+- **Enrich** — left-join two tables on a key column to add columns from a lookup
+- **Missing** — find rows in one table absent from another (anti-join)
+- **Filter** — keep or discard rows based on conditions
+- **Transform** — select columns, add computed columns (conditions, replace mappings, or formulas), and apply row filters
+- **Group** — aggregate rows by a key column (count, sum, average, min, max, concatenate)
+- **Split** — divide a table into branches based on conditions
+- **Stack** — union two tables with the same structure
+
+**Computed column formulas** — 40+ built-in functions across string, math, logic, date and map categories. See the [formula reference](docs/formula-reference.md).
+
+**DML operations**
+- Insert, update or upsert records directly into Salesforce from a result table
+- Field mapping UI with per-field include/exclude toggles
+- Batch execution with a per-record success/error report
+
+**Maps** — persistent key-value lookup tables saved with the schema:
+- Import entries from a pasted spreadsheet (first column = key, choose value column)
+- Use in formulas: `GET("MapName", column)`, `HAS("MapName", column)`
+- Use in SOQL bindings: `[MapName].keys`, `[MapName].values` expand to IN lists
+- Renaming a map automatically propagates to all formulas and SOQL queries
+
+**Schema view** — a bird's-eye canvas of your entire pipeline with draggable nodes, live row counts, and a resizable detail panel. Color rules let you highlight cards based on record count or DML run status.
+
+**Save / Load / Snapshot** — persist a full workspace as a JSON file. Snapshots embed all loaded data so the workspace reopens immediately without re-running queries.
+
+### ⌨️ Seamless experience
+
+- Global keyboard shortcuts — trigger any command from anywhere
+- Quick command palette
+- Minimal, distraction-free dark UI
+- Customisable accent color
+
+## Documentation
+
+- [Data Workbench guide](docs/data-workbench.md)
+- [Formula reference](docs/formula-reference.md)
+- [SOQL Runner guide](docs/soql-runner.md)
+- [Commands reference](docs/commands.md)
 
 ## Installation
 
@@ -104,6 +154,7 @@ All settings can be configured through the application's settings window:
 - Global keyboard shortcuts
 - Custom search configurations
 - Maximum number of concurrent tabs
+- Accent color (applied across all command windows and the SOQL Runner)
 
 ## Development
 
@@ -113,18 +164,20 @@ All settings can be configured through the application's settings window:
 SalesfOps/
 ├── src/
 │   ├── commands/        # Command implementations
-│   ├── services/        # Shared services
-│   ├── windows/         # Window templates
+│   ├── utils/           # Shared utilities
+│   ├── windows/         # Window HTML + JS (SOQL Runner, Data Workbench, …)
 │   └── styles/          # CSS styles
-├── assets/             # Application icons
-└── main.js            # Main process entry
+├── docs/                # Feature documentation
+├── tests/               # Jest test suites
+├── assets/              # Application icons
+└── main.js              # Main process entry point
 ```
 
 ### Available Scripts
 
-- `npm start`: Run in development mode
-- `npm run setup-and-build`: Build for production
-- `npm test`: Run tests (when implemented)
+- `npm start` — run in development mode
+- `npm test` — run the test suite
+- `npm run setup-and-build` — build for production
 
 ## Contributing
 
@@ -138,3 +191,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - Electron: MIT License
 - electron-builder: MIT License
+- csv-parse: MIT License
+- csv-stringify: MIT License

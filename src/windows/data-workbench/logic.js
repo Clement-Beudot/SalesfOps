@@ -7,6 +7,10 @@
  */
 (function (root) {
 
+    // Maps registry — set by setMaps() from the workbench runtime
+    var _maps = [];
+    function setMaps(m) { _maps = m || []; }
+
     /**
      * Evaluate a single filter condition against one row.
      * @param {{ col: string, op: string, value: string }} cond
@@ -708,6 +712,18 @@
             AND:        a => a.every(truthy),
             OR:         a => a.some(truthy),
             COALESCE:   a => a.find(v => v !== '' && v != null) ?? '',
+            // Map lookups
+            GET: a => {
+                const m = _maps.find(m => m.name === toStr(a[0]));
+                if (!m) return null;
+                const entry = m.entries.find(e => toStr(e.key) === toStr(a[1]));
+                return entry !== undefined ? entry.value : null;
+            },
+            HAS: a => {
+                const m = _maps.find(m => m.name === toStr(a[0]));
+                if (!m) return false;
+                return m.entries.some(e => toStr(e.key) === toStr(a[1]));
+            },
             // Conversion & formatting
             TEXT:       a => toStr(a[0]),
             VALUE:      a => { const n = parseFloat(toStr(a[0]).replace(/[^\d.-]/g, '')); return isNaN(n) ? '' : n; },
@@ -1169,7 +1185,7 @@
 
     // ── Export ────────────────────────────────────────────────────────────────
 
-    const api = { evalCondition, evaluateLogicExpression, applyRowFilter, computeFromRecipe, evaluateFormula, tableRef, renameSoqlRefs, renameColumnInSoql, renameColumnInRecipe, parseTsv, parseCsv, genColId, formulaToIds, reconcileSourceColumns, recipeReferencesId, computeColumnDiff, evalColorRule, detectColType, makeRowComparator };
+    const api = { evalCondition, evaluateLogicExpression, applyRowFilter, computeFromRecipe, evaluateFormula, tableRef, renameSoqlRefs, renameColumnInSoql, renameColumnInRecipe, parseTsv, parseCsv, genColId, formulaToIds, reconcileSourceColumns, recipeReferencesId, computeColumnDiff, evalColorRule, detectColType, makeRowComparator, setMaps };
 
     if (typeof module !== 'undefined' && module.exports) {
         // Node / Jest

@@ -6,11 +6,12 @@ if (navigator.userAgent.includes('Macintosh') || navigator.platform.toUpperCase(
 
 // ── Shared state ───────────────────────────────────────────────────────────
 
-const WORKBENCH_VERSION = '0.1.9';
+const WORKBENCH_VERSION = '0.1.12';
 
 var tableCounter = 0;
 var tables = [];
 var colorRules = []; // [{ id, tableId, condition: 'has_records'|'no_records', color }]
+var maps = [];       // [{ id, name, entries: [{ key, value }] }]
 var orgsLoaded = false;
 var orgsLoading = false;
 var orgsData = null;
@@ -183,6 +184,29 @@ function resolveTableRefs(query) {
         const inList = values.map(v => `'${v.replace(/'/g, "\\'")}'`).join(', ');
         resolved = resolved.split(placeholder).join(`(${inList})`);
     }
+    // Map bindings: [MapName].keys or [MapName].values → IN list
+    const mapPattern = /\[([^\]]+)\]\.(keys|values)/g;
+    for (const match of [...resolved.matchAll(mapPattern)]) {
+        const [placeholder, mapName, accessor] = match;
+        const map = (typeof maps !== 'undefined' ? maps : []).find(m => m.name === mapName);
+        if (!map) {
+            const available = (typeof maps !== 'undefined' && maps.length)
+                ? maps.map(m => `[${m.name}]`).join(', ') : 'none';
+            errors.push(`Unknown map "[${mapName}]" — available: ${available}`);
+            continue;
+        }
+        const items = accessor === 'keys'
+            ? map.entries.map(e => e.key)
+            : map.entries.map(e => e.value);
+        const unique = [...new Set(items.filter(v => v !== null && v !== undefined && v !== ''))];
+        if (unique.length === 0) {
+            errors.push(`Map "[${mapName}].${accessor}" has no non-empty values`);
+            continue;
+        }
+        const inList = unique.map(v => `'${String(v).replace(/'/g, "\\'")}'`).join(', ');
+        resolved = resolved.split(placeholder).join(`(${inList})`);
+    }
+
     return { resolved, errors };
 }
 
@@ -227,49 +251,99 @@ function renderBindingsHint(hintEl, targetTextarea, currentTableId = null) {
         ? new Set([currentTableId, ...getTransitiveDependents(currentTableId)])
         : new Set();
     const visible = tables.filter(t => !excluded.has(t.id) && t.source !== 'dml');
-    if (visible.length === 0) { hintEl.classList.remove('visible'); return; }
+    const visibleMaps = (typeof maps !== 'undefined') ? maps : [];
+    if (visible.length === 0 && visibleMaps.length === 0) { hintEl.classList.remove('visible'); return; }
 
-    hintEl.appendChild(document.createTextNode('Available: '));
+    // ── Table bindings ──
+    if (visible.length > 0) {
+        const tablesRow = document.createElement('span');
+        tablesRow.className = 'binding-tables-row';
+        tablesRow.appendChild(document.createTextNode('Available: '));
 
-    visible.forEach((t, i) => {
-        if (i > 0) {
-            const sep = document.createElement('span');
-            sep.innerHTML = ' &nbsp;·&nbsp; ';
-            hintEl.appendChild(sep);
-        }
+        visible.forEach((t, i) => {
+            if (i > 0) {
+                const sep = document.createElement('span');
+                sep.innerHTML = ' &nbsp;·&nbsp; ';
+                tablesRow.appendChild(sep);
+            }
 
-        const pal = BINDING_PALETTE[i % BINDING_PALETTE.length];
-        const group = document.createElement('span');
-        group.className = 'binding-group';
-        group.style.setProperty('--gc', pal.c);
-        group.style.setProperty('--gb', pal.b);
-        group.style.setProperty('--gh', pal.h);
-        group.style.setProperty('--gfl', pal.fl);
+            const pal = BINDING_PALETTE[i % BINDING_PALETTE.length];
+            const group = document.createElement('span');
+            group.className = 'binding-group';
+            group.style.setProperty('--gc', pal.c);
+            group.style.setProperty('--gb', pal.b);
+            group.style.setProperty('--gh', pal.h);
+            group.style.setProperty('--gfl', pal.fl);
 
-        const refCode = document.createElement('code');
-        refCode.textContent = `:${t.ref}`;
-        group.appendChild(refCode);
-        group.appendChild(document.createTextNode(' ('));
+            const refCode = document.createElement('code');
+            refCode.textContent = `:${t.ref}`;
+            group.appendChild(refCode);
+            group.appendChild(document.createTextNode(' ('));
 
-        t.columns.forEach((col, ci) => {
-            if (ci > 0) group.appendChild(document.createTextNode(', '));
-            const tok = /^[A-Za-z_]\w*$/.test(col) ? col : `[${col}]`;
-            const colCode = document.createElement('code');
-            colCode.className = 'binding-col';
-            colCode.textContent = `.${tok}`;
-            colCode.title = `Insert :${t.ref}.${tok}`;
-            colCode.addEventListener('click', () => {
-                insertAtCursor(targetTextarea, `:${t.ref}.${tok}`);
-                colCode.classList.remove('binding-flash');
-                void colCode.offsetWidth;
-                colCode.classList.add('binding-flash');
+            t.columns.forEach((col, ci) => {
+                if (ci > 0) group.appendChild(document.createTextNode(', '));
+                const tok = /^[A-Za-z_]\w*$/.test(col) ? col : `[${col}]`;
+                const colCode = document.createElement('code');
+                colCode.className = 'binding-col';
+                colCode.textContent = `.${tok}`;
+                colCode.title = `Insert :${t.ref}.${tok}`;
+                colCode.addEventListener('click', () => {
+                    insertAtCursor(targetTextarea, `:${t.ref}.${tok}`);
+                    colCode.classList.remove('binding-flash');
+                    void colCode.offsetWidth;
+                    colCode.classList.add('binding-flash');
+                });
+                group.appendChild(colCode);
             });
-            group.appendChild(colCode);
-        });
 
-        group.appendChild(document.createTextNode(')'));
-        hintEl.appendChild(group);
-    });
+            group.appendChild(document.createTextNode(')'));
+            tablesRow.appendChild(group);
+        });
+        hintEl.appendChild(tablesRow);
+    }
+
+    // ── Map bindings ──
+    if (visibleMaps.length > 0) {
+        const mapsRow = document.createElement('span');
+        mapsRow.className = 'binding-maps-row';
+        mapsRow.appendChild(document.createTextNode('Maps: '));
+
+        visibleMaps.forEach((m, i) => {
+            if (i > 0) {
+                const sep = document.createElement('span');
+                sep.innerHTML = ' &nbsp;·&nbsp; ';
+                mapsRow.appendChild(sep);
+            }
+
+            const group = document.createElement('span');
+            group.className = 'binding-map-group';
+
+            const nameCode = document.createElement('code');
+            nameCode.className = 'binding-map-name';
+            nameCode.textContent = `[${m.name}]`;
+            group.appendChild(nameCode);
+            group.appendChild(document.createTextNode(' ('));
+
+            ['keys', 'values'].forEach((accessor, ai) => {
+                if (ai > 0) group.appendChild(document.createTextNode(', '));
+                const link = document.createElement('code');
+                link.className = 'binding-col binding-map-col';
+                link.textContent = `.${accessor}`;
+                link.title = `Insert [${m.name}].${accessor}`;
+                link.addEventListener('click', () => {
+                    insertAtCursor(targetTextarea, `[${m.name}].${accessor}`);
+                    link.classList.remove('binding-flash');
+                    void link.offsetWidth;
+                    link.classList.add('binding-flash');
+                });
+                group.appendChild(link);
+            });
+
+            group.appendChild(document.createTextNode(')'));
+            mapsRow.appendChild(group);
+        });
+        hintEl.appendChild(mapsRow);
+    }
 
     hintEl.classList.add('visible');
 }

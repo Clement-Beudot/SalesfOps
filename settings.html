@@ -8,6 +8,8 @@
     <title>SalesfOps Settings</title>
     <link rel="stylesheet" href="src/styles/dark-input.css">
     <style>
+        :root { --accent: #6366f1; }
+
         html, body {
             height: 100vh;
             overflow: hidden;
@@ -33,7 +35,7 @@
             padding: 0 16px 20px;
             font-size: 15px;
             font-weight: 700;
-            color: #9e0f9e;
+            color: var(--accent);
             letter-spacing: 0.02em;
         }
 
@@ -178,7 +180,7 @@
         }
 
         .shortcut-record-btn:hover {
-            border-color: #6366f1;
+            border-color: var(--accent);
             color: #a5b4fc;
         }
 
@@ -260,6 +262,18 @@
                                    value="10"
                                    placeholder="10">
                             <small class="help-text">Maximum number of browser tabs that can be opened at once</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="accentColor">Accent Color</label>
+                            <div style="display:flex;align-items:center;gap:10px;">
+                                <input type="color"
+                                       id="accentColor"
+                                       data-setting
+                                       value="#6366f1"
+                                       style="width:40px;height:32px;padding:2px;border:1px solid #333;border-radius:6px;background:#222;cursor:pointer;">
+                                <button type="button" id="btn-reset-accent" style="font-size:11px;padding:4px 10px;background:none;border:1px solid #333;border-radius:5px;color:#888;cursor:pointer;">Reset</button>
+                            </div>
+                            <small class="help-text">Border and button color for all command windows and the SOQL Runner</small>
                         </div>
                     </div>
                 </div>
@@ -884,6 +898,15 @@
         document.addEventListener('DOMContentLoaded', async () => {
             const settings = await window.electronAPI.getSettings();
 
+            const accentInput = document.getElementById('accentColor');
+            accentInput.addEventListener('input', () => {
+                document.documentElement.style.setProperty('--accent', accentInput.value);
+            });
+            document.getElementById('btn-reset-accent').addEventListener('click', () => {
+                accentInput.value = '#6366f1';
+                document.documentElement.style.setProperty('--accent', '#6366f1');
+            });
+
             if (settings.sfdxVerified === true) {
                 document.getElementById('sfcliTabBtn').style.display = '';
                 document.getElementById('workbench-sfcli-options').style.display = 'flex';
@@ -970,5 +993,6 @@
             }, 3000);
         });
     </script>
+    <script src="src/utils/apply-accent.js"></script>
 </body>
 </html>

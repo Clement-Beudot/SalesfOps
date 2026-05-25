@@ -314,6 +314,7 @@ function invalidateObjectDescribe(orgIdentifier, objectName) {
 }
 
 module.exports = {
+    getSession,
     describeObject, listObjects, runDml, runDmlBatch,
     invalidateSession, invalidateDescribeCache,
     invalidateObjectList, invalidateObjectDescribe

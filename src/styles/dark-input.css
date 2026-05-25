@@ -1,3 +1,5 @@
+:root { --accent: #6366f1; }
+
 /* Base */
 * {
     margin: 0;
@@ -83,7 +85,7 @@ html, body {
 }
 
 .dark-input:focus, .dark-textarea:focus, input[data-setting]:focus, .dark-select:focus {
-    border-color: #8a108a;
+    border-color: color-mix(in srgb, var(--accent) 85%, black);
 }
 
 .dark-input::placeholder, .dark-textarea::placeholder, input[data-setting]::placeholder {
@@ -124,7 +126,7 @@ select option {
 /* Buttons */
 .submit-button {
     padding: 8px 20px;
-    background: #9e0f9e;
+    background: var(--accent);
     color: white;
     border: none;
     border-radius: 6px;
@@ -134,7 +136,7 @@ select option {
 }
 
 .submit-button:hover {
-    background: #7e0c7e;
+    background: color-mix(in srgb, var(--accent) 80%, black);
 }
 
 .submit-button:active {
@@ -353,7 +355,7 @@ label {
     width: 14px;
     height: 14px;
     margin-right: 6px;
-    accent-color: #9e0f9e;
+    accent-color: var(--accent);
 }
 
 .checkbox-container label {
@@ -366,7 +368,7 @@ input[type="checkbox"] {
     width: 15px;
     height: 15px;
     margin-right: 0.5rem;
-    accent-color: #9e0f9e;
+    accent-color: var(--accent);
 }
 
 /* Number input styling */
@@ -419,7 +421,7 @@ input[type="number"]::-webkit-outer-spin-button {
 
 .section-divider h2 {
     font-size: 1.1rem;
-    color: #9e0f9e;
+    color: var(--accent);
     margin: 0;
     display: inline-block;
     background: #1a1a1a;
@@ -460,7 +462,7 @@ input[type="number"]::-webkit-outer-spin-button {
 .active-toggle input[type="checkbox"] {
     width: 15px;
     height: 15px;
-    accent-color: #9e0f9e;
+    accent-color: var(--accent);
 }
 
 .active-toggle label {
@@ -514,7 +516,7 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 
 .tooltip-icon:hover {
-    color: #9e0f9e;
+    color: var(--accent);
 }
 
 .tooltip-text {
@@ -624,7 +626,7 @@ input[type="number"]::-webkit-outer-spin-button {
     transition: all 0.12s ease;
     flex-shrink: 0;
 }
-.copy-btn:hover { border-color: #9e0f9e; color: #d8a0d8; }
+.copy-btn:hover { border-color: var(--accent); color: color-mix(in srgb, var(--accent) 60%, white); }
 .copy-btn.copied { background: #0f2e14; border-color: #166534; color: #4ade80; }
 
 /* Collapsible result sections */

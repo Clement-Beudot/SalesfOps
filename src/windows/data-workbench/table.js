@@ -326,7 +326,7 @@ async function cascadeRefresh(startId, btn, onProgress = null, onStart = null) {
     renderSchema();
 }
 
-function addTable({ id: providedId = null, name, source, columns, columnDefs = null, rows, totalSize, subtitle, recipe = null, soqlQuery = null, orgIdentifier = null, stale = false, description = null, previewLimit = 100, isSnapshot = false }) {
+function addTable({ id: providedId = null, name, source, columns, columnDefs = null, rows, totalSize, subtitle, recipe = null, soqlQuery = null, orgIdentifier = null, instanceUrl = '', stale = false, description = null, previewLimit = 100, isSnapshot = false }) {
     const id = providedId || `t_${Date.now()}`;
     const ref = tableRef(source, name);
     const lastRun = (!isSnapshot && rows.length > 0) ? new Date().toISOString() : null;
@@ -335,7 +335,7 @@ function addTable({ id: providedId = null, name, source, columns, columnDefs = n
         : (source === 'paste' || source === 'soql') && columns.length > 0
             ? columns.map(n => ({ id: n, name: n, origin: n }))
             : null;
-    const tableEntry = { id, ref, name, source, subtitle: subtitle || null, columns: [...columns], columnDefs: finalColumnDefs, rows: rows.map(r => [...r]), recipe, soqlQuery, orgIdentifier, stale, description: description || null, previewLimit, isSnapshot, lastRun };
+    const tableEntry = { id, ref, name, source, subtitle: subtitle || null, columns: [...columns], columnDefs: finalColumnDefs, rows: rows.map(r => [...r]), recipe, soqlQuery, orgIdentifier, instanceUrl, stale, description: description || null, previewLimit, isSnapshot, lastRun };
     tables.push(tableEntry);
     updateBindingsHint();
     btnResult.style.display = '';
@@ -703,11 +703,12 @@ function renderTableBody(wrapper, tableEntry, { reorderable = false, searchTerm 
             } else {
                 const s = String(cell);
                 const highlighted = term && s.toLowerCase().includes(term);
-                if (sfInstanceUrl && /^[a-zA-Z0-9]{15}$|^[a-zA-Z0-9]{18}$/.test(s)) {
+                const linkBase = tableEntry.instanceUrl || sfInstanceUrl;
+                if (linkBase && /^[a-zA-Z0-9]{15}$|^[a-zA-Z0-9]{18}$/.test(s)) {
                     const a = document.createElement('a');
                     a.className = 'sf-id-link';
-                    a.title = `Open in Salesforce`;
-                    a.addEventListener('click', () => window.electronAPI.openSalesforceId(s));
+                    a.title = linkBase ? `${linkBase}/${s}` : s;
+                    a.addEventListener('click', () => window.electronAPI.openSalesforceId(s, linkBase));
                     if (highlighted) a.appendChild(buildHighlightedText(s, term));
                     else a.textContent = s;
                     td.appendChild(a);

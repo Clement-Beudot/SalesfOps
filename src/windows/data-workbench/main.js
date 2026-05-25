@@ -640,6 +640,7 @@ async function runSoqlQuery() {
             entry.totalSize = result.totalSize;
             entry.soqlQuery = rawQuery;
             entry.orgIdentifier = orgIdentifier;
+            entry.instanceUrl = result.instanceUrl || '';
             entry.subtitle = orgIdentifier || 'default';
             entry.description = soqlDescription.value.trim() || null;
             if (result.rows.length === 0) showToast(`${entry.name}: query returned 0 rows — columns preserved`, 'info', 5000);
@@ -662,6 +663,7 @@ async function runSoqlQuery() {
                 subtitle: orgLabel,
                 soqlQuery: rawQuery,
                 orgIdentifier,
+                instanceUrl: result.instanceUrl || '',
                 description: soqlDescription.value.trim() || null,
             });
             soqlInput.value = '';

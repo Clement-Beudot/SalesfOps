@@ -54,12 +54,11 @@ class SalesforceIdCommand {
      * @param {string} id - The Salesforce ID to open
      * @returns {Promise<void>}
      */
-    async openUrl(id) {
+    async openUrl(id, baseUrl) {
         try {
-            const baseUrl = await this.settings.get('salesforceInstanceUrl');
-            if (baseUrl) {
-                const url = `${baseUrl.replace(/\/$/, '')}/${id}`;
-                await shell.openExternal(url);
+            const url = baseUrl || await this.settings.get('salesforceInstanceUrl');
+            if (url) {
+                await shell.openExternal(`${url.replace(/\/$/, '')}/${id}`);
             }
         } catch (error) {
             console.error('Error opening Salesforce URL:', error);
@@ -71,8 +70,10 @@ class SalesforceIdCommand {
      * @param {Electron.IpcMain} ipcMain - The Electron IPC main instance
      */
     setupIpc(ipcMain) {
-        ipcMain.on('open-salesforce-id', async (event, id) => {
-            await this.openUrl(id);
+        ipcMain.on('open-salesforce-id', async (event, payload) => {
+            const id      = typeof payload === 'string' ? payload : payload?.id;
+            const baseUrl = typeof payload === 'object'  ? payload?.baseUrl : null;
+            await this.openUrl(id, baseUrl);
             if (this.window) {
                 this.window.close();
             }

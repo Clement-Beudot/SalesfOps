@@ -20,7 +20,20 @@ class SalesforceRestCommand {
         });
 
         ipcMain.handle('sf-run-soql', async (_event, { query, orgIdentifier }) => {
-            return await runSoqlQuery(query, orgIdentifier);
+            const result = await runSoqlQuery(query, orgIdentifier);
+            if (!result.error) {
+                try { result.instanceUrl = (await sfRest.getSession(orgIdentifier)).instanceUrl; } catch {}
+            }
+            return result;
+        });
+
+        ipcMain.handle('sf-get-instance-url', async (_event, orgIdentifier) => {
+            try {
+                const session = await sfRest.getSession(orgIdentifier);
+                return { instanceUrl: session.instanceUrl };
+            } catch (err) {
+                return { error: err.message };
+            }
         });
 
         ipcMain.handle('sf-clear-object-list', async (_event, { orgIdentifier }) => {

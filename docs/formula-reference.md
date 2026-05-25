@@ -344,6 +344,31 @@ COALESCE(WorkEmail, PersonalEmail)
 
 ---
 
+## Map functions
+
+These functions look up values from **Maps** defined in the Schema (see the Maps section in the Data Workbench guide). The map name must be a string literal in quotes.
+
+### `GET(mapName, key)`
+Returns the value associated with `key` in the named map, or `null` if the key is not found.
+```
+GET("CountryCodes", ISOCode)
+→ "France" if ISOCode = "FR" and the map contains FR → France
+
+IF(!ISBLANK(Code), GET("TypeLabels", Code), "")
+→ safe lookup that avoids propagating null for empty cells
+```
+
+### `HAS(mapName, key)`
+Returns `TRUE` if `key` exists in the named map, `FALSE` otherwise.
+```
+HAS("VIP_Accounts", AccountId)
+→ TRUE if AccountId is in the VIP_Accounts map
+
+IF(HAS("Exclusions", Email), "Excluded", "Active")
+```
+
+---
+
 ## Date functions
 
 Dates are represented as **ISO 8601 strings** (`YYYY-MM-DD` or full datetime `YYYY-MM-DDTHH:MM:SS.sssZ`).  

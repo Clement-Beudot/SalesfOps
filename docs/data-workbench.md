@@ -324,6 +324,81 @@ Color rules are saved and restored as part of the model file (see below).
 
 ---
 
+## Maps
+
+Maps are persistent key-value tables saved with the schema. They are useful when you have a stable mapping that isn't sourced from Salesforce — for example, a country code → country name lookup, or an internal ID → label translation — and you want to reuse it across formulas or enrichment operations without importing it as a separate table every time.
+
+Click **⊞ Maps** (top right, always visible) to open the Maps panel. The panel is draggable — grab its header to reposition it.
+
+### Creating a map
+
+Enter a name in the **New map name** field and click **+ Create** (or press Enter). The name must be unique within the schema. It will be used to reference the map in formulas.
+
+### Importing entries from a paste
+
+1. Expand a map by clicking the **▶** toggle.
+2. Paste TSV or CSV data into the paste area. The first column is automatically used as the key (it cannot be changed).
+3. A **Value column** dropdown appears — select which of the other columns holds the values you want to map to. All other columns are discarded.
+4. Click **Import**.
+
+This replaces any existing entries in the map.
+
+### Adding or removing individual entries
+
+At the bottom of the expanded map body, type a key and a value into the two input fields and press **+ Add** (or Enter). Each entry appears in the entries table above. Click **✕** on any row to remove it.
+
+### Renaming or deleting a map
+
+- **Rename** — double-click the map name and type a new one.
+- **Delete** — click 🗑 in the map header.
+
+### Using maps in formulas
+
+Maps are available in any **Computed Column** formula via two functions:
+
+```
+GET(mapName, key)   → returns the mapped value, or null if the key is not found
+HAS(mapName, key)   → returns TRUE if the key exists in the map
+```
+
+```
+GET("CountryCodes", ISOCode)
+→ returns "France" if ISOCode = "FR" and the map contains FR → France
+
+IF(!ISBLANK(TypeCode), GET("TypeLabels", TypeCode), "")
+→ safe lookup: skip empty cells to avoid null results appearing in output
+
+IF(HAS("VIP_Accounts", AccountId), "VIP", "Standard")
+→ tag rows based on whether the account is in the map
+```
+
+`mapName` must be a **string literal** (in quotes), not a column reference.
+
+### Using maps in SOQL bindings
+
+Maps can also be used directly in SOQL queries as IN-list bindings. The binding hint zone (below the query editor) shows a **Maps** section alongside the table bindings. Click `.keys` or `.values` to insert the reference at the cursor, or type it manually:
+
+```
+[MapName].keys    → expands to all keys of the map as an IN list
+[MapName].values  → expands to all values of the map as an IN list
+```
+
+```sql
+SELECT Id, Name FROM Account
+WHERE BillingCountryCode IN [CountryCodes].keys
+
+SELECT Id FROM Contact
+WHERE Title IN [JobTitles].values AND AccountId IN :Accounts.Id
+```
+
+Duplicates and empty values are filtered out automatically. Map and table bindings can be combined freely in the same query.
+
+Renaming a map automatically updates all references to it — both formula usages (`GET`/`HAS`) and SOQL bindings (`[MapName].keys` / `.values`) — across the entire schema.
+
+Maps are saved and restored as part of the model file (see below).
+
+---
+
 ## Saving and loading a model
 
 ### Save
@@ -334,6 +409,7 @@ When you have tables and results set up, click **Save** (top right) to export th
 - All result recipes (the configuration for each result).
 - All column renames.
 - All color rules.
+- All maps (names and entries).
 
 Once a file has been saved or loaded, its name appears in the header bar. Clicking **Save** again pre-fills the dialog with the same filename, so you can overwrite in one click or choose a new name to save a copy.
 

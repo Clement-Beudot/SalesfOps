@@ -143,6 +143,7 @@ orgSelect.addEventListener('change', () => {
     window.electronAPI.setSetting('soqlDefaultOrg', value);
     setOrgReady();
     setOrgStatus(_cachedOrgs);
+    window.electronAPI.sfGetInstanceUrl(value).then(r => { if (r?.instanceUrl) sfInstanceUrl = r.instanceUrl; });
 });
 btnRefreshOrgs.addEventListener('click', () => loadOrgs(true));
 
@@ -188,6 +189,7 @@ async function runQuery() {
     try {
         const result = await window.electronAPI.sfRunSoql({ query, orgIdentifier: orgSelect.value });
         if (result.error) { showError(result.error); return; }
+        if (result.instanceUrl) sfInstanceUrl = result.instanceUrl;
         _columns   = result.columns || [];
         _rows      = result.rows    || [];
         _totalSize = result.totalSize || _rows.length;
@@ -217,7 +219,8 @@ function makeCell(value) {
         const link = document.createElement('span');
         link.className   = 'runner-id-link';
         link.textContent = str;
-        link.addEventListener('click', () => window.electronAPI.openSalesforceId(str));
+        link.title       = `${sfInstanceUrl}/${str}`;
+        link.addEventListener('click', () => window.electronAPI.openSalesforceId(str, sfInstanceUrl));
         td.appendChild(link);
     } else {
         td.textContent = str;

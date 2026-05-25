@@ -216,6 +216,7 @@
             <span class="schema-bar-title" id="schema-bar-title" title="Click to edit name and description">Schema</span>
             <div class="schema-legend" id="schema-legend"></div>
             <div class="schema-bar-spacer"></div>
+            <button class="schema-bar-btn" id="btn-maps" title="Manage maps (key-value lookups)">⊞ Maps</button>
             <button class="schema-bar-btn" id="btn-color-rules" style="display:none;" title="Manage card color rules">⬤ Colors</button>
             <button class="schema-bar-btn" id="btn-result" style="display:none;">+ Add Result</button>
             <button class="schema-bar-btn" id="btn-dml" style="display:none;" title="Create a DML action card to insert/update/upsert records in Salesforce">+ DML</button>
@@ -311,6 +312,19 @@
         <div class="color-rules-list" id="color-rules-list"></div>
     </div>
 
+    <!-- Maps Panel -->
+    <div class="maps-panel hidden" id="maps-panel">
+        <div class="maps-panel-header" id="maps-panel-header">
+            <span>⊞ Maps</span>
+            <button class="maps-close" id="maps-close" title="Close">✕</button>
+        </div>
+        <div class="maps-create-row">
+            <input type="text" id="maps-new-name" class="maps-name-input" placeholder="New map name…" autocomplete="off" spellcheck="false">
+            <button class="maps-add-btn" id="maps-add-btn">+ Create</button>
+        </div>
+        <div class="maps-list" id="maps-list"></div>
+    </div>
+
     <div id="toast-container"></div>
 
     <!-- New schema confirmation modal -->
@@ -368,6 +382,7 @@
     <script src="./data-workbench/recipe.js"></script>
     <script src="./data-workbench/schema.js"></script>
     <script src="./data-workbench/color-rules.js"></script>
+    <script src="./data-workbench/maps.js"></script>
     <script src="./data-workbench/dml.js"></script>
     <script src="./data-workbench/main.js"></script>
 </body>
