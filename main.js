@@ -18,14 +18,11 @@ class Application {
 
     async init() {
         await app.whenReady();
+        this.updateInfo = await this.checkForUpdates();
         await this.createTray();
         this.commands.setupIpc(ipcMain);
         await this.commands.setupShortcuts(globalShortcut);
         this.setupAppEvents();
-
-        ipcMain.on('save-settings', async () => {
-            await this.updateTrayMenu();
-        });
     }
 
     async createTray() {
@@ -47,7 +44,7 @@ class Application {
     async updateTrayMenu() {
         const version = app.getVersion();
         const menuItems = [];
-        const updateInfo = await this.checkForUpdates();
+        const updateInfo = this.updateInfo ?? { hasUpdate: false };
 
         // ── Salesforce ────────────────────────────────────────────────────────
         const sfItems = [];
