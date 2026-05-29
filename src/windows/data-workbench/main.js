@@ -607,6 +607,22 @@ soqlInput.addEventListener('keydown', (e) => {
     }
 });
 
+var soqlBatchProgress = document.getElementById('soql-batch-progress');
+var soqlBatchFill     = document.getElementById('soql-batch-fill');
+var soqlBatchLabel    = document.getElementById('soql-batch-label');
+
+function showBatchProgress(current, total) {
+    soqlBatchProgress.classList.remove('hidden');
+    soqlBatchFill.style.width = `${Math.round((current / total) * 100)}%`;
+    soqlBatchLabel.textContent = `Batch ${current}/${total}`;
+    btnRunQuery.textContent = `Batch ${current}/${total}…`;
+}
+
+function hideBatchProgress() {
+    soqlBatchProgress.classList.add('hidden');
+    soqlBatchFill.style.width = '0%';
+}
+
 async function runSoqlQuery() {
     const raw = soqlInput.value.trim();
     const rawQuery = raw.replace(/,+(\s*)(\bFROM\b)/gi, '$1$2');
@@ -616,7 +632,7 @@ async function runSoqlQuery() {
         return;
     }
 
-    const { resolved, errors } = resolveTableRefs(rawQuery);
+    const { resolved, errors, batches } = resolveTableRefs(rawQuery);
     if (errors.length > 0) {
         showError(soqlError, errors.join('\n'));
         return;
@@ -628,7 +644,29 @@ async function runSoqlQuery() {
 
     try {
         const orgIdentifier = orgSelect.value;
-        const result = await window.electronAPI.runDataWorkbenchSoql({ query: resolved, orgIdentifier });
+
+        let result;
+        if (batches && batches.length > 1) {
+            showBatchProgress(1, batches.length);
+            const allRows = [];
+            let columns = null;
+            let instanceUrl = '';
+            let totalSize = 0;
+            for (let i = 0; i < batches.length; i++) {
+                showBatchProgress(i + 1, batches.length);
+                const batchResult = await window.electronAPI.runDataWorkbenchSoql({ query: batches[i], orgIdentifier });
+                if (batchResult.error) {
+                    showError(soqlError, batchResult.error);
+                    return;
+                }
+                if (!columns) { columns = batchResult.columns; instanceUrl = batchResult.instanceUrl || ''; }
+                allRows.push(...batchResult.rows);
+                totalSize += batchResult.totalSize;
+            }
+            result = { columns, rows: allRows, totalSize, instanceUrl };
+        } else {
+            result = await window.electronAPI.runDataWorkbenchSoql({ query: resolved, orgIdentifier });
+        }
 
         if (result.error) {
             showError(soqlError, result.error);
@@ -673,6 +711,7 @@ async function runSoqlQuery() {
     } finally {
         btnRunQuery.disabled = false;
         btnRunQuery.textContent = soqlEditingEntry ? 'Update Table' : 'Run Query';
+        hideBatchProgress();
     }
 }
 

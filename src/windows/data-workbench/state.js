@@ -146,10 +146,15 @@ function isOrgConnected(org) {
 }
 
 
+const SOQL_BATCH_SIZE = 200;
+
 function resolveTableRefs(query) {
     const pattern = /:([A-Za-z]\w*\.\w+)\.(\w+|\[[^\]]+\])/g;
     let resolved = query;
     const errors = [];
+    let largeRef = null;   // { placeholder, values } for the one large IN list
+    let multiLarge = false; // true if 2+ large refs found — no batching
+
     for (const match of [...query.matchAll(pattern)]) {
         const [placeholder, refName, rawColName] = match;
         const columnName = rawColName.startsWith('[') ? rawColName.slice(1, -1) : rawColName;
@@ -181,10 +186,27 @@ function resolveTableRefs(query) {
         }
         const values = [...new Set(table.rows.map(r => r[colIndex]).filter(v => v && v !== ''))];
         if (values.length === 0) { errors.push(`Column "${columnName}" in :${refName} has no non-empty values`); continue; }
-        const inList = values.map(v => `'${v.replace(/'/g, "\\'")}'`).join(', ');
-        resolved = resolved.split(placeholder).join(`(${inList})`);
+
+        if (values.length > SOQL_BATCH_SIZE && !multiLarge) {
+            if (!largeRef) {
+                // First large ref — defer replacement, save for batching
+                largeRef = { placeholder, values };
+            } else {
+                // Second large ref — cancel batching, replace both with full lists
+                multiLarge = true;
+                const firstInList = largeRef.values.map(v => `'${v.replace(/'/g, "\\'")}'`).join(', ');
+                resolved = resolved.split(largeRef.placeholder).join(`(${firstInList})`);
+                largeRef = null;
+                const inList = values.map(v => `'${v.replace(/'/g, "\\'")}'`).join(', ');
+                resolved = resolved.split(placeholder).join(`(${inList})`);
+            }
+        } else {
+            const inList = values.map(v => `'${v.replace(/'/g, "\\'")}'`).join(', ');
+            resolved = resolved.split(placeholder).join(`(${inList})`);
+        }
     }
     // Map bindings: [MapName].keys or [MapName].values → IN list
+    // Applied to resolved, which may still contain the deferred largeRef placeholder.
     const mapPattern = /\[([^\]]+)\]\.(keys|values)/g;
     for (const match of [...resolved.matchAll(mapPattern)]) {
         const [placeholder, mapName, accessor] = match;
@@ -207,7 +229,23 @@ function resolveTableRefs(query) {
         resolved = resolved.split(placeholder).join(`(${inList})`);
     }
 
-    return { resolved, errors };
+    // Generate batch queries if exactly one large ref was found
+    let batches = null;
+    if (largeRef) {
+        const chunks = [];
+        for (let i = 0; i < largeRef.values.length; i += SOQL_BATCH_SIZE) {
+            chunks.push(largeRef.values.slice(i, i + SOQL_BATCH_SIZE));
+        }
+        batches = chunks.map(chunk => {
+            const inList = chunk.map(v => `'${v.replace(/'/g, "\\'")}'`).join(', ');
+            return resolved.split(largeRef.placeholder).join(`(${inList})`);
+        });
+        // resolved gets the full list for callers that don't handle batching (refresh flows)
+        const fullList = largeRef.values.map(v => `'${v.replace(/'/g, "\\'")}'`).join(', ');
+        resolved = resolved.split(largeRef.placeholder).join(`(${fullList})`);
+    }
+
+    return { resolved, errors, batches };
 }
 
 function insertAtCursor(textarea, text) {

@@ -439,6 +439,30 @@ body.platform-mac .header-left {
 
 .panel-error.visible { display: block; }
 
+.soql-batch-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0 2px;
+    font-size: 11px;
+    color: #9e9e9e;
+}
+.soql-batch-progress.hidden { display: none; }
+.batch-bar-track {
+    flex: 1;
+    height: 3px;
+    background: #333;
+    border-radius: 2px;
+    overflow: hidden;
+}
+.batch-bar-fill {
+    height: 100%;
+    background: #16a34a;
+    border-radius: 2px;
+    width: 0%;
+    transition: width 0.2s ease;
+}
+
 .header-delete-error {
     position: absolute;
     right: 36px;
