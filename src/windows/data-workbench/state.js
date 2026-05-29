@@ -292,6 +292,14 @@ function renderBindingsHint(hintEl, targetTextarea, currentTableId = null) {
     const visibleMaps = (typeof maps !== 'undefined') ? maps : [];
     if (visible.length === 0 && visibleMaps.length === 0) { hintEl.classList.remove('visible'); return; }
 
+    function makeToggle(refEl, colsWrap, collapseLabel, expandLabel) {
+        refEl.addEventListener('click', () => {
+            const expanding = colsWrap.classList.contains('hidden');
+            colsWrap.classList.toggle('hidden', !expanding);
+            refEl.textContent = expanding ? expandLabel : collapseLabel;
+        });
+    }
+
     // ── Table bindings ──
     if (visible.length > 0) {
         const tablesRow = document.createElement('span');
@@ -314,27 +322,35 @@ function renderBindingsHint(hintEl, targetTextarea, currentTableId = null) {
             group.style.setProperty('--gfl', pal.fl);
 
             const refCode = document.createElement('code');
-            refCode.textContent = `:${t.ref}`;
-            group.appendChild(refCode);
-            group.appendChild(document.createTextNode(' ('));
+            refCode.className = 'binding-ref';
+            refCode.textContent = `:${t.ref} ▸`;
+            refCode.title = `Show fields for :${t.ref}`;
 
+            const colsWrap = document.createElement('span');
+            colsWrap.className = 'binding-cols hidden';
+            colsWrap.appendChild(document.createTextNode(' ('));
             t.columns.forEach((col, ci) => {
-                if (ci > 0) group.appendChild(document.createTextNode(', '));
+                if (ci > 0) colsWrap.appendChild(document.createTextNode(', '));
                 const tok = /^[A-Za-z_]\w*$/.test(col) ? col : `[${col}]`;
                 const colCode = document.createElement('code');
                 colCode.className = 'binding-col';
                 colCode.textContent = `.${tok}`;
                 colCode.title = `Insert :${t.ref}.${tok}`;
-                colCode.addEventListener('click', () => {
+                colCode.addEventListener('click', (e) => {
+                    e.stopPropagation();
                     insertAtCursor(targetTextarea, `:${t.ref}.${tok}`);
                     colCode.classList.remove('binding-flash');
                     void colCode.offsetWidth;
                     colCode.classList.add('binding-flash');
                 });
-                group.appendChild(colCode);
+                colsWrap.appendChild(colCode);
             });
+            colsWrap.appendChild(document.createTextNode(')'));
 
-            group.appendChild(document.createTextNode(')'));
+            makeToggle(refCode, colsWrap, `:${t.ref} ▾`, `:${t.ref} ▸`);
+
+            group.appendChild(refCode);
+            group.appendChild(colsWrap);
             tablesRow.appendChild(group);
         });
         hintEl.appendChild(tablesRow);
@@ -357,27 +373,34 @@ function renderBindingsHint(hintEl, targetTextarea, currentTableId = null) {
             group.className = 'binding-map-group';
 
             const nameCode = document.createElement('code');
-            nameCode.className = 'binding-map-name';
-            nameCode.textContent = `[${m.name}]`;
-            group.appendChild(nameCode);
-            group.appendChild(document.createTextNode(' ('));
+            nameCode.className = 'binding-map-name binding-ref';
+            nameCode.textContent = `[${m.name}] ▸`;
+            nameCode.title = `Show bindings for [${m.name}]`;
 
+            const colsWrap = document.createElement('span');
+            colsWrap.className = 'binding-cols hidden';
+            colsWrap.appendChild(document.createTextNode(' ('));
             ['keys', 'values'].forEach((accessor, ai) => {
-                if (ai > 0) group.appendChild(document.createTextNode(', '));
+                if (ai > 0) colsWrap.appendChild(document.createTextNode(', '));
                 const link = document.createElement('code');
                 link.className = 'binding-col binding-map-col';
                 link.textContent = `.${accessor}`;
                 link.title = `Insert [${m.name}].${accessor}`;
-                link.addEventListener('click', () => {
+                link.addEventListener('click', (e) => {
+                    e.stopPropagation();
                     insertAtCursor(targetTextarea, `[${m.name}].${accessor}`);
                     link.classList.remove('binding-flash');
                     void link.offsetWidth;
                     link.classList.add('binding-flash');
                 });
-                group.appendChild(link);
+                colsWrap.appendChild(link);
             });
+            colsWrap.appendChild(document.createTextNode(')'));
 
-            group.appendChild(document.createTextNode(')'));
+            makeToggle(nameCode, colsWrap, `[${m.name}] ▾`, `[${m.name}] ▸`);
+
+            group.appendChild(nameCode);
+            group.appendChild(colsWrap);
             mapsRow.appendChild(group);
         });
         hintEl.appendChild(mapsRow);

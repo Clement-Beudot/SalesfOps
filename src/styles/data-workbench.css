@@ -974,6 +974,17 @@ a.sf-id-link:hover {
     font-size: 11px;
 }
 
+.bindings-hint code.binding-ref {
+    cursor: pointer;
+    transition: background 0.1s;
+    user-select: none;
+}
+.bindings-hint code.binding-ref:hover {
+    background: var(--gh, #3d1f5a);
+    filter: brightness(1.15);
+}
+.binding-cols.hidden { display: none; }
+
 .bindings-hint code.binding-col {
     cursor: pointer;
     transition: background 0.1s, color 0.1s;
