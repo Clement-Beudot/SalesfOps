@@ -264,6 +264,8 @@ function buildCascadeOrder(startId) {
     return sorted;
 }
 
+const CASCADE_HIGHLIGHT_MS = 300;
+
 async function cascadeRefresh(startId, btn, onProgress = null, onStart = null) {
     const sorted = buildCascadeOrder(startId);
     const total = sorted.length;
@@ -274,15 +276,21 @@ async function cascadeRefresh(startId, btn, onProgress = null, onStart = null) {
     for (let i = 0; i < sorted.length; i++) {
         const t = tables.find(u => u.id === sorted[i]);
         if (!t || t.source === 'paste') continue;
+
+        const schemaNode = document.querySelector(`[data-schema-node="${t.id}"]`);
+        const refreshRing = schemaNode?.querySelector('.refresh-ring');
+        if (refreshRing) {
+            refreshRing.setAttribute('visibility', 'visible');
+            await new Promise(r => setTimeout(r, CASCADE_HIGHLIGHT_MS));
+        }
+
         btn.textContent = `${i + 1}/${total}`;
         if (onStart) onStart({ table: t, index: i + 1, total });
         try {
             if (t.source === 'soql') {
-                if (!t.soqlQuery) continue;
-                const { resolved, errors } = resolveTableRefs(t.soqlQuery);
-                if (errors.length) { showToast(`${t.name}: ${errors.join(' · ')}`, 'error', 0); continue; }
-                const result = await window.electronAPI.runDataWorkbenchSoql({ query: resolved, orgIdentifier: t.orgIdentifier });
-                if (result.error) { showToast(`${t.name}: ${result.error}`, 'error', 0); continue; }
+                if (!t.soqlQuery) { if (refreshRing) refreshRing.setAttribute('visibility', 'hidden'); continue; }
+                const result = await runSoqlWithBatching(t.soqlQuery, t.orgIdentifier, (cur, tot) => { btn.textContent = `${i + 1}/${total} · ${cur}/${tot}`; });
+                if (result.error) { if (refreshRing) refreshRing.setAttribute('visibility', 'hidden'); showToast(`${t.name}: ${result.error}`, 'error', 0); continue; }
                 if (result.rows.length === 0) showToast(`${t.name}: query returned 0 rows — columns preserved`, 'info', 5000);
                 t.rows = result.rows; t.totalSize = result.totalSize;
                 const removed1 = applyColumnRenames(t, result.columns);
@@ -297,22 +305,14 @@ async function cascadeRefresh(startId, btn, onProgress = null, onStart = null) {
                 t.isSnapshot = false;
                 t.lastRun = new Date().toISOString();
                 if (typeof invalidateDmlCardsForSource === 'function') invalidateDmlCardsForSource(t.id);
-            } else continue;
+            } else { if (refreshRing) refreshRing.setAttribute('visibility', 'hidden'); continue; }
 
+            if (refreshRing) refreshRing.setAttribute('visibility', 'hidden');
             updateBindingsHint();
             refreshTableCard(t);
-            const card = document.querySelector(`.table-card[data-table-id="${t.id}"]`);
-            if (card) {
-                card.querySelector('.stale-banner')?.classList.remove('visible');
-                card.querySelector('.broken-banner')?.classList.remove('visible');
-                card.querySelectorAll('.btn-edit.stale').forEach(b => b.classList.remove('stale'));
-                card.classList.remove('recalc-flash');
-                void card.offsetWidth;
-                card.classList.add('recalc-flash');
-                card.addEventListener('animationend', () => card.classList.remove('recalc-flash'), { once: true });
-            }
             if (onProgress) onProgress({ table: t, index: i + 1, total });
         } catch (err) {
+            if (refreshRing) refreshRing.setAttribute('visibility', 'hidden');
             console.error(`Cascade: error on "${t.name}"`, err);
             showToast(`Error rebuilding ${t.name}: ${err.message || err}`, 'error', 0);
             if (onProgress) onProgress({ table: t, index: i + 1, total });
@@ -449,12 +449,10 @@ function addTable({ id: providedId = null, name, source, columns, columnDefs = n
             btnRerunQuick.title = 'Re-run SOQL query';
             btnRerunQuick.addEventListener('click', async () => {
                 if (!tableEntry.soqlQuery) return;
-                const { resolved, errors } = resolveTableRefs(tableEntry.soqlQuery);
-                if (errors.length > 0) { showToast(errors.join(' · '), 'error', 0); return; }
                 btnRerunQuick.classList.add('spinning');
                 btnRerunQuick.disabled = true;
                 try {
-                    const result = await window.electronAPI.runDataWorkbenchSoql({ query: resolved, orgIdentifier: tableEntry.orgIdentifier });
+                    const result = await runSoqlWithBatching(tableEntry.soqlQuery, tableEntry.orgIdentifier);
                     if (result.error) { showToast(result.error, 'error', 0); return; }
                     if (result.rows.length === 0) showToast(`${tableEntry.name}: query returned 0 rows — columns preserved`, 'info', 5000);
                     tableEntry.rows      = result.rows;
@@ -1145,14 +1143,12 @@ function buildSoqlEditArea(editArea, tableEntry, card) {
         const excluded = new Set([tableEntry.id, ...getTransitiveDependents(tableEntry.id)]);
         const circular = [...new Set(usedRefs.filter(ref => { const t = tables.find(u => u.ref === ref); return t && excluded.has(t.id); }))];
         if (circular.length > 0) { showError(errSpan, `Circular reference: ${circular.map(r => ':' + r).join(', ')} depends on this table.`); return; }
-        const { resolved, errors } = resolveTableRefs(query);
-        if (errors.length > 0) { showError(errSpan, errors.join('\n')); return; }
         errSpan.classList.remove('visible');
         btnRerun.disabled = true;
         btnRerun.textContent = 'Running…';
         try {
             const org = localOrgSel.value;
-            const result = await window.electronAPI.runDataWorkbenchSoql({ query: resolved, orgIdentifier: org });
+            const result = await runSoqlWithBatching(query, org, (cur, tot) => { btnRerun.textContent = `Batch ${cur}/${tot}…`; });
             if (result.error) {
                 showError(errSpan, result.error);
             } else {

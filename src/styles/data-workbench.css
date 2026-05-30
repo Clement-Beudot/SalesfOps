@@ -1385,6 +1385,14 @@ a.sf-id-link:hover {
 
 .recalc-flash { animation: recalcFlash 0.7s ease-out; }
 
+.refresh-ring {
+    animation: schemaRefreshPulse 0.8s ease-in-out infinite;
+}
+@keyframes schemaRefreshPulse {
+    0%, 100% { stroke-opacity: 0.5; }
+    50%       { stroke-opacity: 1.0; }
+}
+
 /* ── Collapse ─────────────────────────────────────── */
 .btn-collapse {
     background: none;

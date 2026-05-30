@@ -664,6 +664,7 @@ function renderSchema() {
 
         const g = document.createElementNS(NS, 'g');
         g.setAttribute('transform', `translate(${pos.x},${pos.y})`);
+        g.setAttribute('data-schema-node', t.id);
 
         // ── Drop shadow ──
         const shadow = document.createElementNS(NS, 'rect');
@@ -697,6 +698,17 @@ function renderSchema() {
         lockRing.setAttribute('stroke-dasharray', '5 3');
         lockRing.setAttribute('visibility', 'hidden');
         g.appendChild(lockRing);
+
+        // ── Refresh ring (visible during cascade rebuild) ──
+        const refreshRing = document.createElementNS(NS, 'rect');
+        refreshRing.setAttribute('width', pos.w); refreshRing.setAttribute('height', pos.h);
+        refreshRing.setAttribute('rx', R);
+        refreshRing.setAttribute('fill', 'none');
+        refreshRing.setAttribute('stroke', '#fbbf24');
+        refreshRing.setAttribute('stroke-width', '2.5');
+        refreshRing.setAttribute('visibility', 'hidden');
+        refreshRing.setAttribute('class', 'refresh-ring');
+        g.appendChild(refreshRing);
 
         // ── Left accent bar (clipped to card shape via clipPath) ──
         const clipId = `clip-${t.id}`;
@@ -961,9 +973,7 @@ function renderSchema() {
                 try {
                     if (t.source === 'soql') {
                         if (!t.soqlQuery) return;
-                        const { resolved, errors } = resolveTableRefs(t.soqlQuery);
-                        if (errors.length > 0) { showToast(errors.join(' · '), 'error', 0); return; }
-                        const result = await window.electronAPI.runDataWorkbenchSoql({ query: resolved, orgIdentifier: t.orgIdentifier });
+                        const result = await runSoqlWithBatching(t.soqlQuery, t.orgIdentifier, (cur, tot) => { refreshTxt.textContent = `${cur}/${tot}`; });
                         if (result.error) { showToast(result.error, 'error', 0); return; }
                         if (result.rows.length === 0) showToast(`${t.name}: query returned 0 rows — columns preserved`, 'info', 5000);
                         t.rows = result.rows;
@@ -1325,13 +1335,7 @@ function openSchemaPreview(tableEntry) {
             rerunBtn.disabled = true;
             rerunBtn.textContent = 'Running…';
             try {
-                const { resolved, errors } = resolveTableRefs(tableEntry.soqlQuery);
-                if (errors.length > 0) {
-                    rerunErr.textContent = errors.join(' · ');
-                    rerunErr.classList.add('visible');
-                    return;
-                }
-                const result = await window.electronAPI.runDataWorkbenchSoql({ query: resolved, orgIdentifier: tableEntry.orgIdentifier });
+                const result = await runSoqlWithBatching(tableEntry.soqlQuery, tableEntry.orgIdentifier, (cur, tot) => { rerunBtn.textContent = `Batch ${cur}/${tot}…`; });
                 if (result.error) {
                     rerunErr.textContent = result.error;
                     rerunErr.classList.add('visible');

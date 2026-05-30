@@ -248,6 +248,30 @@ function resolveTableRefs(query) {
     return { resolved, errors, batches };
 }
 
+// Runs a SOQL query with automatic IN-list batching when needed.
+// onProgress(current, total) is called before each batch API call (optional).
+// Returns { columns, rows, totalSize, instanceUrl } or { error }.
+async function runSoqlWithBatching(rawQuery, orgIdentifier, onProgress) {
+    const { resolved, errors, batches } = resolveTableRefs(rawQuery);
+    if (errors.length > 0) return { error: errors.join('\n') };
+
+    if (!batches || batches.length <= 1) {
+        return window.electronAPI.runDataWorkbenchSoql({ query: resolved, orgIdentifier });
+    }
+
+    const allRows = [];
+    let columns = null, instanceUrl = '', totalSize = 0;
+    for (let i = 0; i < batches.length; i++) {
+        if (onProgress) onProgress(i + 1, batches.length);
+        const r = await window.electronAPI.runDataWorkbenchSoql({ query: batches[i], orgIdentifier });
+        if (r.error) return { error: r.error };
+        if (!columns) { columns = r.columns; instanceUrl = r.instanceUrl || ''; }
+        allRows.push(...r.rows);
+        totalSize += r.totalSize;
+    }
+    return { columns, rows: allRows, totalSize, instanceUrl };
+}
+
 function insertAtCursor(textarea, text) {
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;

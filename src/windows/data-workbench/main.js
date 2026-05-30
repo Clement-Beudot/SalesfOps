@@ -632,41 +632,13 @@ async function runSoqlQuery() {
         return;
     }
 
-    const { resolved, errors, batches } = resolveTableRefs(rawQuery);
-    if (errors.length > 0) {
-        showError(soqlError, errors.join('\n'));
-        return;
-    }
-
     clearErrors();
     btnRunQuery.disabled = true;
     btnRunQuery.textContent = 'Running…';
 
     try {
         const orgIdentifier = orgSelect.value;
-
-        let result;
-        if (batches && batches.length > 1) {
-            showBatchProgress(1, batches.length);
-            const allRows = [];
-            let columns = null;
-            let instanceUrl = '';
-            let totalSize = 0;
-            for (let i = 0; i < batches.length; i++) {
-                showBatchProgress(i + 1, batches.length);
-                const batchResult = await window.electronAPI.runDataWorkbenchSoql({ query: batches[i], orgIdentifier });
-                if (batchResult.error) {
-                    showError(soqlError, batchResult.error);
-                    return;
-                }
-                if (!columns) { columns = batchResult.columns; instanceUrl = batchResult.instanceUrl || ''; }
-                allRows.push(...batchResult.rows);
-                totalSize += batchResult.totalSize;
-            }
-            result = { columns, rows: allRows, totalSize, instanceUrl };
-        } else {
-            result = await window.electronAPI.runDataWorkbenchSoql({ query: resolved, orgIdentifier });
-        }
+        const result = await runSoqlWithBatching(rawQuery, orgIdentifier, showBatchProgress);
 
         if (result.error) {
             showError(soqlError, result.error);
