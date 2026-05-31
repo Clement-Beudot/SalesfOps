@@ -56,6 +56,9 @@
         dragHandle.style.cursor = 'grab';
     });
 
+    // ── Resize handle ──
+    makeResizable(panel, document.getElementById('maps-resize'));
+
     // ── Open / close ──
     btnMaps.addEventListener('click', () => {
         panel.classList.toggle('hidden');

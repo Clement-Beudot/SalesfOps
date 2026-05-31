@@ -1617,6 +1617,7 @@ function serializeModel(includeData = false) {
         tableCounter,
         colorRules: colorRules.map(r => ({ ...r })),
         maps: maps.map(m => ({ id: m.id, name: m.name, entries: m.entries.map(e => ({ ...e })) })),
+        variables: variables.map(v => ({ id: v.id, name: v.name, value: v.value })),
         tables: tables.map(t => {
             const e = { id: t.id, name: t.name, source: t.source, columns: [...t.columns] };
             if (t.columnDefs)  e.columnDefs  = t.columnDefs.map(d => ({ ...d }));
@@ -1643,6 +1644,7 @@ async function deserializeModel(data) {
     tables = [];
     colorRules = [];
     maps = [];
+    variables = [];
     schemaTransform = { x: 0, y: 0, scale: 1 };
     document.querySelectorAll('.table-card').forEach(c => c.remove());
     emptyState.style.display = '';
@@ -1697,6 +1699,9 @@ async function deserializeModel(data) {
     }));
     if (typeof window !== 'undefined' && window.DWLogic) window.DWLogic.setMaps(maps);
     if (typeof window !== 'undefined' && window.renderMapsList) window.renderMapsList();
+    variables = (data.variables || []).map(v => ({ id: v.id || ('var_' + Date.now()), name: v.name, value: v.value ?? '' }));
+    if (typeof window !== 'undefined' && window.DWLogic) window.DWLogic.setVariables(variables);
+    if (typeof window !== 'undefined' && window.renderVariablesList) window.renderVariablesList();
 
     for (const t of (data.tables || [])) {
         const newId = idMap[t.id];

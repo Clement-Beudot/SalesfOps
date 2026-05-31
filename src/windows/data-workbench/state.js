@@ -12,6 +12,7 @@ var tableCounter = 0;
 var tables = [];
 var colorRules = []; // [{ id, tableId, condition: 'has_records'|'no_records', color }]
 var maps = [];       // [{ id, name, entries: [{ key, value }] }]
+var variables = [];  // [{ id, name, value }]
 var orgsLoaded = false;
 var orgsLoading = false;
 var orgsData = null;
@@ -150,7 +151,11 @@ const SOQL_BATCH_SIZE = 200;
 
 function resolveTableRefs(query) {
     const pattern = /:([A-Za-z]\w*\.\w+)\.(\w+|\[[^\]]+\])/g;
-    let resolved = query;
+    // Substitute $varName references first
+    let resolved = query.replace(/\$([A-Za-z_]\w*)/g, (_, name) => {
+        const vr = variables.find(v => v.name === name);
+        return vr !== undefined ? vr.value : '$' + name;
+    });
     const errors = [];
     let largeRef = null;   // { placeholder, values } for the one large IN list
     let multiLarge = false; // true if 2+ large refs found — no batching
@@ -272,6 +277,34 @@ async function runSoqlWithBatching(rawQuery, orgIdentifier, onProgress) {
     return { columns, rows: allRows, totalSize, instanceUrl };
 }
 
+function makeResizable(panel, handle, { minW = 200, maxW = 700, minH = 120 } = {}) {
+    let resizing = false, startX = 0, startY = 0, startW = 0, startH = 0;
+    handle.addEventListener('mousedown', (e) => {
+        resizing = true;
+        const rect = panel.getBoundingClientRect();
+        panel.style.right = 'auto';
+        panel.style.left  = rect.left + 'px';
+        panel.style.top   = rect.top  + 'px';
+        startX = e.clientX; startY = e.clientY;
+        startW = rect.width; startH = rect.height;
+        document.body.style.cursor = 'se-resize';
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+        e.stopPropagation();
+    });
+    document.addEventListener('mousemove', (e) => {
+        if (!resizing) return;
+        panel.style.width     = Math.max(minW, Math.min(maxW, startW + (e.clientX - startX))) + 'px';
+        panel.style.maxHeight = Math.max(minH, Math.min(window.innerHeight - 80, startH + (e.clientY - startY))) + 'px';
+    });
+    document.addEventListener('mouseup', () => {
+        if (!resizing) return;
+        resizing = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+    });
+}
+
 function insertAtCursor(textarea, text) {
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
@@ -314,7 +347,8 @@ function renderBindingsHint(hintEl, targetTextarea, currentTableId = null) {
         : new Set();
     const visible = tables.filter(t => !excluded.has(t.id) && t.source !== 'dml');
     const visibleMaps = (typeof maps !== 'undefined') ? maps : [];
-    if (visible.length === 0 && visibleMaps.length === 0) { hintEl.classList.remove('visible'); return; }
+    const visibleVars = (typeof variables !== 'undefined') ? variables : [];
+    if (visible.length === 0 && visibleMaps.length === 0 && visibleVars.length === 0) { hintEl.classList.remove('visible'); return; }
 
     function makeToggle(refEl, colsWrap, collapseLabel, expandLabel) {
         refEl.addEventListener('click', () => {
@@ -428,6 +462,32 @@ function renderBindingsHint(hintEl, targetTextarea, currentTableId = null) {
             mapsRow.appendChild(group);
         });
         hintEl.appendChild(mapsRow);
+    }
+
+    // ── Variable bindings ──
+    if (visibleVars.length > 0) {
+        const varsRow = document.createElement('span');
+        varsRow.className = 'binding-vars-row';
+        varsRow.appendChild(document.createTextNode('Vars: '));
+        visibleVars.forEach((v, i) => {
+            if (i > 0) {
+                const sep = document.createElement('span');
+                sep.innerHTML = ' &nbsp;·&nbsp; ';
+                varsRow.appendChild(sep);
+            }
+            const chip = document.createElement('code');
+            chip.className = 'binding-var-chip binding-ref';
+            chip.textContent = '$' + v.name;
+            chip.title = `Insert $${v.name}${v.value ? ' (= ' + v.value + ')' : ''}`;
+            chip.addEventListener('click', () => {
+                insertAtCursor(targetTextarea, '$' + v.name);
+                chip.classList.remove('binding-flash');
+                void chip.offsetWidth;
+                chip.classList.add('binding-flash');
+            });
+            varsRow.appendChild(chip);
+        });
+        hintEl.appendChild(varsRow);
     }
 
     hintEl.classList.add('visible');

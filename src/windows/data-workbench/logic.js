@@ -11,6 +11,10 @@
     var _maps = [];
     function setMaps(m) { _maps = m || []; }
 
+    // Variables registry — set by setVariables() from the workbench runtime
+    var _variables = [];
+    function setVariables(v) { _variables = v || []; }
+
     /**
      * Evaluate a single filter condition against one row.
      * @param {{ col: string, op: string, value: string }} cond
@@ -22,7 +26,10 @@
         const colName = columnDefs ? (columnDefs.find(d => d.id === cond.col)?.name ?? cond.col) : cond.col;
         const ci  = columns.indexOf(colName);
         const val = String(ci >= 0 ? (row[ci] ?? '') : '');
-        const v   = cond.value || '';
+        const v   = (cond.value || '').replace(/\$([A-Za-z_]\w*)/g, (_, n) => {
+            const vr = _variables.find(x => x.name === n);
+            return vr !== undefined ? vr.value : '$' + n;
+        });
         switch (cond.op) {
             case '=':          return val === v;
             case '≠':          return val !== v;
@@ -591,6 +598,14 @@
                     toks.push({ t: 'ID', v: id });
                     continue;
                 }
+                // Variable references: $varName
+                if (src[i] === '$') {
+                    i++;
+                    let id = '';
+                    while (i < src.length && /\w/.test(src[i])) id += src[i++];
+                    toks.push({ t: 'VAR', v: id });
+                    continue;
+                }
                 // Identifiers
                 if (/[A-Za-z_]/.test(src[i])) {
                     let id = '';
@@ -842,6 +857,11 @@
             const tok = peek();
             if (tok.t === 'NUM') { consume(); return tok.v; }
             if (tok.t === 'STR') { consume(); return tok.v; }
+            if (tok.t === 'VAR') {
+                consume();
+                const found = _variables.find(vr => vr.name === tok.v);
+                return found !== undefined ? found.value : '';
+            }
             if (tok.t === 'LP')  {
                 consume();
                 const val = parseExpr();
@@ -1185,7 +1205,7 @@
 
     // ── Export ────────────────────────────────────────────────────────────────
 
-    const api = { evalCondition, evaluateLogicExpression, applyRowFilter, computeFromRecipe, evaluateFormula, tableRef, renameSoqlRefs, renameColumnInSoql, renameColumnInRecipe, parseTsv, parseCsv, genColId, formulaToIds, reconcileSourceColumns, recipeReferencesId, computeColumnDiff, evalColorRule, detectColType, makeRowComparator, setMaps };
+    const api = { evalCondition, evaluateLogicExpression, applyRowFilter, computeFromRecipe, evaluateFormula, tableRef, renameSoqlRefs, renameColumnInSoql, renameColumnInRecipe, parseTsv, parseCsv, genColId, formulaToIds, reconcileSourceColumns, recipeReferencesId, computeColumnDiff, evalColorRule, detectColType, makeRowComparator, setMaps, setVariables };
 
     if (typeof module !== 'undefined' && module.exports) {
         // Node / Jest

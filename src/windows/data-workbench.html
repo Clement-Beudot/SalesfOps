@@ -221,6 +221,7 @@
             <div class="schema-legend" id="schema-legend"></div>
             <div class="schema-bar-spacer"></div>
             <button class="schema-bar-btn" id="btn-maps" title="Manage maps (key-value lookups)">⊞ Maps</button>
+            <button class="schema-bar-btn" id="btn-vars" title="Manage variables ($varName)">$ Vars</button>
             <button class="schema-bar-btn" id="btn-color-rules" style="display:none;" title="Manage card color rules">⬤ Colors</button>
             <button class="schema-bar-btn" id="btn-result" style="display:none;">+ Add Result</button>
             <button class="schema-bar-btn" id="btn-dml" style="display:none;" title="Create a DML action card to insert/update/upsert records in Salesforce">+ DML</button>
@@ -314,6 +315,21 @@
             <button class="btn-primary" id="color-rule-add" disabled>+ Add Rule</button>
         </div>
         <div class="color-rules-list" id="color-rules-list"></div>
+        <div class="panel-resize-handle" id="color-rules-resize"></div>
+    </div>
+
+    <!-- Variables Panel -->
+    <div class="vars-panel hidden" id="vars-panel">
+        <div class="vars-panel-header" id="vars-panel-header">
+            <span>$ Variables</span>
+            <button class="vars-close" id="vars-close" title="Close">✕</button>
+        </div>
+        <div class="vars-create-row">
+            <input type="text" id="vars-new-name" class="vars-name-input" placeholder="Variable name (no spaces)…" autocomplete="off" spellcheck="false">
+            <button class="vars-add-btn" id="vars-add-btn">+ Create</button>
+        </div>
+        <div class="vars-list" id="vars-list"></div>
+        <div class="panel-resize-handle" id="vars-resize"></div>
     </div>
 
     <!-- Maps Panel -->
@@ -327,6 +343,7 @@
             <button class="maps-add-btn" id="maps-add-btn">+ Create</button>
         </div>
         <div class="maps-list" id="maps-list"></div>
+        <div class="panel-resize-handle" id="maps-resize"></div>
     </div>
 
     <div id="toast-container"></div>
@@ -387,6 +404,7 @@
     <script src="./data-workbench/schema.js"></script>
     <script src="./data-workbench/color-rules.js"></script>
     <script src="./data-workbench/maps.js"></script>
+    <script src="./data-workbench/variables.js"></script>
     <script src="./data-workbench/dml.js"></script>
     <script src="./data-workbench/main.js"></script>
 </body>

@@ -40,6 +40,9 @@
         dragHandle.style.cursor = 'grab';
     });
 
+    // ── Resize handle ──
+    makeResizable(panel, document.getElementById('color-rules-resize'));
+
     let selectedColor       = null;
     let selectedBorderStyle = 'solid';
 
